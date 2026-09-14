@@ -1,5 +1,7 @@
 package com.example.miaubertosocial
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -8,7 +10,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,8 +19,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.firestore.FirebaseFirestore
@@ -39,6 +42,9 @@ data class Post(
     val avatarEmoji: String,
     val content: String,
     val mediaEmoji: String? = null,
+    val linkUrl: String? = null,
+    val fileUrl: String? = null,
+    val fileName: String? = null,
     val timestamp: String,
     val likesCount: Int = 0
 )
@@ -63,8 +69,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MiaubertoSocialScreen() {
     val db = remember { FirebaseFirestore.getInstance() }
+    val context = LocalContext.current
     
-    // Usuario por defecto
     val currentUser = remember {
         UserProfile(
             id = "user_" + System.currentTimeMillis(),
@@ -76,10 +82,14 @@ fun MiaubertoSocialScreen() {
 
     var posts by remember { mutableStateOf<List<Post>>(emptyList()) }
     var showNewPostModal by remember { mutableStateOf(false) }
+    
     var newPostContentText by remember { mutableStateOf("") }
     var selectedEmojiTag by remember { mutableStateOf("🐾") }
+    var linkInputUrl by remember { mutableStateOf("") }
+    var fileInputUrl by remember { mutableStateOf("") }
+    var fileInputName by remember { mutableStateOf("") }
 
-    // Escucha activa en tiempo real desde Firebase Firestore
+    // Escucha en tiempo real desde Firestore
     LaunchedEffect(Unit) {
         db.collection("posts")
             .orderBy("createdAt", Query.Direction.DESCENDING)
@@ -94,6 +104,9 @@ fun MiaubertoSocialScreen() {
                         avatarEmoji = doc.getString("avatarEmoji") ?: "😼",
                         content = doc.getString("content") ?: "",
                         mediaEmoji = doc.getString("mediaEmoji"),
+                        linkUrl = doc.getString("linkUrl"),
+                        fileUrl = doc.getString("fileUrl"),
+                        fileName = doc.getString("fileName"),
                         timestamp = "En vivo ⚡",
                         likesCount = (doc.getLong("likesCount") ?: 0L).toInt()
                     )
@@ -111,7 +124,7 @@ fun MiaubertoSocialScreen() {
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
                             Text("MIAUBERTO SOCIAL", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                            Text("Red Privada entre Amigos 🐾", color = Color(0xFF38BDF8), fontSize = 11.sp)
+                            Text("Videos, Archivos & Estados 🎬📁", color = Color(0xFF38BDF8), fontSize = 11.sp)
                         }
                     }
                 },
@@ -134,17 +147,9 @@ fun MiaubertoSocialScreen() {
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            Text(
-                text = "ESTADO DE CONEXIÓN: EN TIEMPO REAL 🟢",
-                color = Color(0xFF10B981),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 6.dp)
-            )
-
             LazyColumn(
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
                 modifier = Modifier.weight(1f)
             ) {
                 items(posts) { post ->
@@ -156,6 +161,7 @@ fun MiaubertoSocialScreen() {
                             .border(1.dp, Color(0xFF334155), RoundedCornerShape(12.dp))
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
+                            // Header del autor
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(
                                     modifier = Modifier
@@ -175,65 +181,167 @@ fun MiaubertoSocialScreen() {
 
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            Text(post.content, color = Color.White, fontSize = 14.sp, lineHeight = 20.sp)
+                            // Texto principal
+                            if (post.content.isNotBlank()) {
+                                Text(post.content, color = Color.White, fontSize = 14.sp, lineHeight = 20.sp)
+                            }
 
-                            if (post.mediaEmoji != null) {
+                            // Sticker Emoji
+                            if (!post.mediaEmoji.isNullOrEmpty()) {
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(100.dp)
+                                        .height(70.dp)
                                         .clip(RoundedCornerShape(8.dp))
                                         .background(Color(0xFF020617)),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text(post.mediaEmoji, fontSize = 48.sp)
+                                    Text(post.mediaEmoji, fontSize = 36.sp)
+                                }
+                            }
+
+                            // Enlace / Video Youtube
+                            if (!post.linkUrl.isNullOrEmpty()) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Surface(
+                                    color = Color(0xFF0F172A),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(1.dp, Color(0xFF0EA5E9), RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(post.linkUrl))
+                                            context.startActivity(intent)
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("🎬🔗", fontSize = 24.sp)
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = if (post.linkUrl.contains("youtube") || post.linkUrl.contains("youtu.be")) "Ver Video en YouTube" else "Abrir Enlace Web",
+                                                color = Color(0xFF38BDF8),
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp
+                                            )
+                                            Text(
+                                                text = post.linkUrl,
+                                                color = Color(0xFF94A3B8),
+                                                fontSize = 11.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Archivo / Documento adjunto
+                            if (!post.fileUrl.isNullOrEmpty()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Surface(
+                                    color = Color(0xFF0F172A),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(1.dp, Color(0xFF10B981), RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(post.fileUrl))
+                                            context.startActivity(intent)
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("📁📄", fontSize = 24.sp)
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = post.fileName ?: "Descargar Archivo",
+                                                color = Color(0xFF10B981),
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp
+                                            )
+                                            Text(
+                                                text = post.fileUrl,
+                                                color = Color(0xFF94A3B8),
+                                                fontSize = 11.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-
-            Text(
-                text = "Desarrollado por: Miauberto",
-                color = Color(0xFF38BDF8),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 6.dp)
-            )
         }
     }
 
+    // Modal para crear nueva publicación
     if (showNewPostModal) {
         AlertDialog(
             onDismissRequest = { showNewPostModal = false },
             title = { Text("Nueva Publicación ✍️", color = Color.White) },
             text = {
-                Column {
+                Column(modifier = Modifier.fillMaxWidth()) {
                     OutlinedTextField(
                         value = newPostContentText,
                         onValueChange = { newPostContentText = it },
-                        label = { Text("¿Qué está pasando, Michi?") },
+                        label = { Text("¿Qué quieres compartir?") },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(120.dp),
-                        maxLines = 5
+                            .height(90.dp),
+                        maxLines = 4
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text("Sticker / Emoji:", color = Color(0xFF94A3B8), fontSize = 12.sp)
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = linkInputUrl,
+                        onValueChange = { linkInputUrl = it },
+                        label = { Text("🎬 Link de Video / Web (opcional)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = fileInputName,
+                        onValueChange = { fileInputName = it },
+                        label = { Text("📄 Nombre del Archivo (opcional)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = fileInputUrl,
+                        onValueChange = { fileInputUrl = it },
+                        label = { Text("📁 Link del Archivo / Documento") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text("Sticker / Emoji:", color = Color(0xFF94A3B8), fontSize = 11.sp)
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier.padding(top = 4.dp)
                     ) {
-                        listOf("🐾", "🐱", "🎧", "🎮", "🚀", "🍕").forEach { emoji ->
+                        listOf("🐾", "🎬", "📁", "🎮", "🚀", "🍕").forEach { emoji ->
                             FilterChip(
                                 selected = selectedEmojiTag == emoji,
                                 onClick = { selectedEmojiTag = emoji },
-                                label = { Text(emoji, fontSize = 16.sp) }
+                                label = { Text(emoji, fontSize = 14.sp) }
                             )
                         }
                     }
@@ -242,18 +350,25 @@ fun MiaubertoSocialScreen() {
             confirmButton = {
                 Button(
                     onClick = {
-                        if (newPostContentText.isNotBlank()) {
+                        if (newPostContentText.isNotBlank() || linkInputUrl.isNotBlank() || fileInputUrl.isNotBlank()) {
                             val newPostMap = hashMapOf(
                                 "authorName" to currentUser.name,
                                 "username" to currentUser.username,
                                 "avatarEmoji" to currentUser.avatarEmoji,
                                 "content" to newPostContentText,
                                 "mediaEmoji" to selectedEmojiTag,
+                                "linkUrl" to linkInputUrl.ifBlank { null },
+                                "fileUrl" to fileInputUrl.ifBlank { null },
+                                "fileName" to fileInputName.ifBlank { "Archivo adjunto" },
                                 "likesCount" to 0,
                                 "createdAt" to System.currentTimeMillis()
                             )
                             db.collection("posts").add(newPostMap)
+                            
                             newPostContentText = ""
+                            linkInputUrl = ""
+                            fileInputUrl = ""
+                            fileInputName = ""
                             showNewPostModal = false
                         }
                     },
