@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "879261804777",
+    "project_id": "redmiauberto",
+    "storage_bucket": "redmiauberto.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:879261804777:android:86c6bcde16862bed2c6878",
+        "android_client_info": {
+          "package_name": "com.example.miaubertosocial"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC9kAp3CLDh6XqeYwoygwJxTVy_dJfO33w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
