@@ -44,13 +44,15 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.util.regex.Pattern
 
-// Estilo MichiSocial
-val FbBlue = Color(0xFF1877F2)
-val FbBg = Color(0xFFF0F2F5)
-val FbCardBg = Color(0xFFFFFFFF)
-val FbTextPrimary = Color(0xFF050505)
-val FbTextSecondary = Color(0xFF65676B)
-val FbDivider = Color(0xFFCED0D4)
+// --- PALETA ESTÉTICA EXCLUSIVA: MIAUBERTO EVIL DARK MODE ---
+val MiaubertoBg = Color(0xFF101014)          // Fondo ultra oscuro elegancia villana
+val MiaubertoCardBg = Color(0xFF1C1C22)      // Tarjetas en gris oscuro carbón
+val MiaubertoRed = Color(0xFFE63946)         // Rojo Neón Miau (Botonera y acentos)
+val MiaubertoGold = Color(0xFFF59E0B)        // Dorado Supremo
+val MiaubertoTextPrimary = Color(0xFFF3F4F6)  // Blanco suave lectura nocturna
+val MiaubertoTextSecondary = Color(0xFF9CA3AF)// Gris medio
+val MiaubertoBorder = Color(0xFF2A2A34)       // Borde fino tarjetas
+val MiaubertoDarkBtn = Color(0xFF262630)      // Fondo de botones interactivos
 
 data class UserProfile(
     val uid: String,
@@ -132,7 +134,7 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = FbBg
+                    color = MiaubertoBg
                 ) {
                     AppNavigationScreen()
                 }
@@ -191,7 +193,7 @@ fun AppNavigationScreen() {
 
     if (isLoadingProfile) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = FbBlue)
+            CircularProgressIndicator(color = MiaubertoRed)
         }
     } else if (currentUserProfile == null) {
         AuthAndProfileScreen(
@@ -239,71 +241,91 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(FbBg)
+            .background(MiaubertoBg)
             .padding(20.dp),
         contentAlignment = Alignment.Center
     ) {
         Card(
-            colors = CardDefaults.cardColors(containerColor = FbCardBg),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-            shape = RoundedCornerShape(8.dp),
-            modifier = Modifier.fillMaxWidth()
+            colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, MiaubertoBorder, RoundedCornerShape(16.dp))
         ) {
             Column(
-                modifier = Modifier.padding(20.dp),
+                modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "MichiSocial",
-                    color = FbBlue,
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Bold
+                    text = "😼 MIAUBERTO",
+                    color = MiaubertoRed,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Black
+                )
+                Text(
+                    text = "Red Social para Mentes Malvadas",
+                    color = MiaubertoTextSecondary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 if (isRegisterMode) {
-                    Text("Foto de Perfil:", color = FbTextSecondary, fontSize = 12.sp)
+                    Text("Avatar del Michi:", color = MiaubertoTextSecondary, fontSize = 12.sp)
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Box(
                         modifier = Modifier
-                            .size(80.dp)
+                            .size(90.dp)
                             .clip(CircleShape)
-                            .background(FbBg)
-                            .border(2.dp, FbBlue, CircleShape)
+                            .background(MiaubertoBg)
+                            .border(2.dp, MiaubertoRed, CircleShape)
                             .clickable { avatarPickerLauncher.launch("image/*") },
                         contentAlignment = Alignment.Center
                     ) {
                         if (selectedAvatarUri != null) {
                             AsyncImage(
                                 model = selectedAvatarUri,
-                                contentDescription = "Avatar seleccionado",
+                                contentDescription = "Avatar",
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop
                             )
                         } else {
-                            Text("📷 Galería", color = FbBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("📸 Foto", color = MiaubertoRed, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     OutlinedTextField(
                         value = nameInput,
                         onValueChange = { nameInput = it },
-                        label = { Text("Nombre y Apellido") },
+                        label = { Text("Nombre y Apellido", color = MiaubertoTextSecondary) },
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = MiaubertoTextPrimary,
+                            unfocusedTextColor = MiaubertoTextPrimary,
+                            focusedBorderColor = MiaubertoRed,
+                            unfocusedBorderColor = MiaubertoBorder
+                        )
                     )
                     Spacer(modifier = Modifier.height(8.dp))
 
                     OutlinedTextField(
                         value = usernameInput,
                         onValueChange = { usernameInput = it },
-                        label = { Text("Nombre de usuario (@michi)") },
+                        label = { Text("Usuario (@michi)", color = MiaubertoTextSecondary) },
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = MiaubertoTextPrimary,
+                            unfocusedTextColor = MiaubertoTextPrimary,
+                            focusedBorderColor = MiaubertoRed,
+                            unfocusedBorderColor = MiaubertoBorder
+                        )
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                 }
@@ -311,27 +333,39 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                 OutlinedTextField(
                     value = emailInput,
                     onValueChange = { emailInput = it },
-                    label = { Text("Correo electrónico") },
+                    label = { Text("Correo electrónico", color = MiaubertoTextSecondary) },
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = MiaubertoTextPrimary,
+                        unfocusedTextColor = MiaubertoTextPrimary,
+                        focusedBorderColor = MiaubertoRed,
+                        unfocusedBorderColor = MiaubertoBorder
+                    )
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedTextField(
                     value = passwordInput,
                     onValueChange = { passwordInput = it },
-                    label = { Text("Contraseña") },
+                    label = { Text("Contraseña", color = MiaubertoTextSecondary) },
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = MiaubertoTextPrimary,
+                        unfocusedTextColor = MiaubertoTextPrimary,
+                        focusedBorderColor = MiaubertoRed,
+                        unfocusedBorderColor = MiaubertoBorder
+                    )
                 )
 
                 if (errorMessage.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(errorMessage, color = Color.Red, fontSize = 12.sp)
+                    Text(errorMessage, color = Color(0xFFEF4444), fontSize = 12.sp)
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(18.dp))
 
                 Button(
                     onClick = {
@@ -404,29 +438,27 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                                 }
                         }
                     },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = FbBlue),
-                    shape = RoundedCornerShape(6.dp)
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MiaubertoRed),
+                    shape = RoundedCornerShape(10.dp)
                 ) {
                     if (isLoading) {
                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
                     } else {
-                        Text(if (isRegisterMode) "Crear cuenta nueva" else "Iniciar sesión", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(if (isRegisterMode) "Unirse al Gremio 🐾" else "Ingresar al Guarida 😼", fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
-                Divider(color = FbDivider)
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 TextButton(onClick = { 
                     isRegisterMode = !isRegisterMode
                     errorMessage = ""
                 }) {
                     Text(
-                        if (isRegisterMode) "¿Ya tienes cuenta? Inicia Sesión" else "Crear cuenta de MichiSocial",
-                        color = FbBlue,
-                        fontWeight = FontWeight.SemiBold
+                        if (isRegisterMode) "¿Ya posees cuenta? Iniciar Sesión" else "Crear nueva cuenta en el Gremio",
+                        color = MiaubertoTextSecondary,
+                        fontSize = 13.sp
                     )
                 }
             }
@@ -484,7 +516,7 @@ fun MiaubertoFacebookFeedScreen(
                     val dislikesList = doc.get("dislikesList") as? List<String> ?: emptyList()
                     Post(
                         id = doc.id,
-                        authorName = doc.getString("authorName") ?: "Michi",
+                        authorName = doc.getString("authorName") ?: "Michi Malvado",
                         username = doc.getString("username") ?: "@michi",
                         avatarBase64 = doc.getString("avatarBase64"),
                         content = doc.getString("content") ?: "",
@@ -525,56 +557,64 @@ fun MiaubertoFacebookFeedScreen(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "MichiSocial",
-                            color = FbBlue,
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold
+                            "😼 Miauberto Red",
+                            color = MiaubertoRed,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Black
                         )
                         if (currentUser.isAdmin) {
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
                             Surface(
-                                color = Color(0xFFF59E0B),
-                                shape = RoundedCornerShape(4.dp)
+                                color = MiaubertoGold,
+                                shape = RoundedCornerShape(6.dp)
                             ) {
-                                Text("👑 ADMIN", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
+                                Text(
+                                    "👑 LÍDER SUPREMO",
+                                    color = Color.Black,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Black,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
                             }
                         }
                     }
                 },
                 actions = {
                     IconButton(onClick = { showEditProfileModal = true }) {
-                        Text("⚙️", fontSize = 20.sp)
+                        Text("⚙️", fontSize = 18.sp)
                     }
                     TextButton(onClick = onLogout) {
-                        Text("Salir", color = FbTextSecondary, fontWeight = FontWeight.Bold)
+                        Text("Salir 🚪", color = MiaubertoTextSecondary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = FbCardBg)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MiaubertoCardBg)
             )
         },
-        containerColor = FbBg
+        containerColor = MiaubertoBg
     ) { innerPadding ->
         LazyColumn(
-            contentPadding = PaddingValues(bottom = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
             item {
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = FbCardBg),
-                    shape = RoundedCornerShape(0.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, MiaubertoBorder, RoundedCornerShape(14.dp))
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
-                                    .size(40.dp)
+                                    .size(44.dp)
                                     .clip(CircleShape)
-                                    .background(FbBg),
+                                    .background(MiaubertoBg)
+                                    .border(1.dp, MiaubertoRed, CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (!currentUser.avatarBase64.isNullOrEmpty()) {
@@ -585,7 +625,7 @@ fun MiaubertoFacebookFeedScreen(
                                         contentScale = ContentScale.Crop
                                     )
                                 } else {
-                                    Text("👤", fontSize = 20.sp)
+                                    Text("😼", fontSize = 22.sp)
                                 }
                             }
 
@@ -594,27 +634,29 @@ fun MiaubertoFacebookFeedScreen(
                             OutlinedTextField(
                                 value = newPostContentText,
                                 onValueChange = { newPostContentText = it },
-                                placeholder = { Text("¿Qué estás pensando, ${currentUser.name.split(" ")[0]}?") },
+                                placeholder = { Text("¿Qué plan malvado trama hoy, ${currentUser.name.split(" ")[0]}?", color = MiaubertoTextSecondary, fontSize = 13.sp) },
                                 modifier = Modifier
                                     .weight(1f)
-                                    .heightIn(min = 50.dp, max = 100.dp),
-                                shape = RoundedCornerShape(20.dp),
+                                    .heightIn(min = 50.dp, max = 110.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    unfocusedBorderColor = Color.Transparent,
-                                    focusedBorderColor = FbBlue,
-                                    unfocusedContainerColor = FbBg,
-                                    focusedContainerColor = FbBg
+                                    focusedTextColor = MiaubertoTextPrimary,
+                                    unfocusedTextColor = MiaubertoTextPrimary,
+                                    unfocusedBorderColor = MiaubertoBorder,
+                                    focusedBorderColor = MiaubertoRed,
+                                    unfocusedContainerColor = MiaubertoBg,
+                                    focusedContainerColor = MiaubertoBg
                                 )
                             )
                         }
 
                         if (selectedPostImageUri != null) {
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(180.dp)
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .clip(RoundedCornerShape(10.dp))
                             ) {
                                 AsyncImage(
                                     model = selectedPostImageUri,
@@ -625,18 +667,17 @@ fun MiaubertoFacebookFeedScreen(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Divider(color = FbDivider, thickness = 0.5.dp)
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Divider(color = MiaubertoBorder, thickness = 0.8.dp)
+                        Spacer(modifier = Modifier.height(6.dp))
 
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 6.dp),
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             TextButton(onClick = { postImagePickerLauncher.launch("image/*") }) {
-                                Text("🖼️ Galería", color = Color(0xFF45BD62), fontWeight = FontWeight.Bold)
+                                Text("🖼️ Agregar Imagen", color = MiaubertoTextSecondary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             }
 
                             Button(
@@ -668,14 +709,14 @@ fun MiaubertoFacebookFeedScreen(
                                             }
                                     }
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = FbBlue),
-                                shape = RoundedCornerShape(6.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MiaubertoRed),
+                                shape = RoundedCornerShape(8.dp),
                                 enabled = !isPosting && (newPostContentText.isNotBlank() || selectedPostImageUri != null)
                             ) {
                                 if (isPosting) {
                                     CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp))
                                 } else {
-                                    Text("Publicar", color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text("Publicar 😼", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 }
                             }
                         }
@@ -689,21 +730,23 @@ fun MiaubertoFacebookFeedScreen(
                 val userHasDisliked = post.dislikesList.contains(currentUser.uid)
 
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = FbCardBg),
-                    shape = RoundedCornerShape(0.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, MiaubertoBorder, RoundedCornerShape(14.dp))
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(40.dp)
+                                    .size(42.dp)
                                     .clip(CircleShape)
-                                    .background(FbBg),
+                                    .background(MiaubertoBg)
+                                    .border(1.dp, MiaubertoRed, CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (!post.avatarBase64.isNullOrEmpty()) {
@@ -714,7 +757,7 @@ fun MiaubertoFacebookFeedScreen(
                                         contentScale = ContentScale.Crop
                                     )
                                 } else {
-                                    Text("👤", fontSize = 20.sp)
+                                    Text("😼", fontSize = 20.sp)
                                 }
                             }
 
@@ -723,13 +766,13 @@ fun MiaubertoFacebookFeedScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = post.authorName,
-                                    color = FbTextPrimary,
+                                    color = MiaubertoTextPrimary,
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "${post.username} • ${post.timestamp} 🌐",
-                                    color = FbTextSecondary,
+                                    text = "${post.username} • ${post.timestamp} 🐾",
+                                    color = MiaubertoTextSecondary,
                                     fontSize = 12.sp
                                 )
                             }
@@ -748,9 +791,9 @@ fun MiaubertoFacebookFeedScreen(
                         if (post.content.isNotBlank()) {
                             Text(
                                 text = post.content,
-                                color = FbTextPrimary,
-                                fontSize = 15.sp,
-                                lineHeight = 21.sp
+                                color = MiaubertoTextPrimary,
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp
                             )
                         }
 
@@ -761,7 +804,7 @@ fun MiaubertoFacebookFeedScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(210.dp)
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .clip(RoundedCornerShape(10.dp))
                                     .background(Color.Black)
                             ) {
                                 AndroidView(
@@ -783,91 +826,139 @@ fun MiaubertoFacebookFeedScreen(
                             Spacer(modifier = Modifier.height(10.dp))
                             AsyncImage(
                                 model = post.postImageBase64,
-                                contentDescription = "Imagen del post",
+                                contentDescription = "Imagen",
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .heightIn(max = 350.dp)
-                                    .clip(RoundedCornerShape(6.dp)),
+                                    .clip(RoundedCornerShape(10.dp)),
                                 contentScale = ContentScale.Crop
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = "👍 ${post.likesList.size}  •  👎 ${post.dislikesList.size}",
-                                color = FbTextSecondary,
-                                fontSize = 12.sp
+                                text = "😼 ${post.likesList.size} Aprueban  •  😾 ${post.dislikesList.size} Reprueban",
+                                color = MiaubertoTextSecondary,
+                                fontSize = 11.sp
                             )
                             Text(
-                                text = "💬 ${post.commentsCount} comentarios",
-                                color = FbTextSecondary,
-                                fontSize = 12.sp
+                                text = "💬 ${post.commentsCount} Murmullos",
+                                color = MiaubertoTextSecondary,
+                                fontSize = 11.sp
                             )
                         }
 
                         Spacer(modifier = Modifier.height(8.dp))
-                        Divider(color = FbDivider, thickness = 0.5.dp)
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Divider(color = MiaubertoBorder, thickness = 0.8.dp)
+                        Spacer(modifier = Modifier.height(6.dp))
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceAround
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            TextButton(onClick = {
-                                val postRef = db.collection("posts").document(post.id)
-                                if (userHasLiked) {
-                                    postRef.update("likesList", FieldValue.arrayRemove(currentUser.uid))
-                                } else {
-                                    postRef.update(
-                                        "likesList", FieldValue.arrayUnion(currentUser.uid),
-                                        "dislikesList", FieldValue.arrayRemove(currentUser.uid)
+                            Surface(
+                                color = if (userHasLiked) MiaubertoRed.copy(alpha = 0.2f) else MiaubertoDarkBtn,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        val postRef = db.collection("posts").document(post.id)
+                                        if (userHasLiked) {
+                                            postRef.update("likesList", FieldValue.arrayRemove(currentUser.uid))
+                                        } else {
+                                            postRef.update(
+                                                "likesList", FieldValue.arrayUnion(currentUser.uid),
+                                                "dislikesList", FieldValue.arrayRemove(currentUser.uid)
+                                            )
+                                        }
+                                    }
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = "🐾 Aprobar",
+                                        color = if (userHasLiked) MiaubertoRed else MiaubertoTextSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
                                     )
                                 }
-                            }) {
-                                Text(
-                                    text = "👍 Me gusta",
-                                    color = if (userHasLiked) FbBlue else FbTextSecondary,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
                             }
 
-                            TextButton(onClick = {
-                                val postRef = db.collection("posts").document(post.id)
-                                if (userHasDisliked) {
-                                    postRef.update("dislikesList", FieldValue.arrayRemove(currentUser.uid))
-                                } else {
-                                    postRef.update(
-                                        "dislikesList", FieldValue.arrayUnion(currentUser.uid),
-                                        "likesList", FieldValue.arrayRemove(currentUser.uid)
+                            Surface(
+                                color = if (userHasDisliked) Color(0xFF7F1D1D) else MiaubertoDarkBtn,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        val postRef = db.collection("posts").document(post.id)
+                                        if (userHasDisliked) {
+                                            postRef.update("dislikesList", FieldValue.arrayRemove(currentUser.uid))
+                                        } else {
+                                            postRef.update(
+                                                "dislikesList", FieldValue.arrayUnion(currentUser.uid),
+                                                "likesList", FieldValue.arrayRemove(currentUser.uid)
+                                            )
+                                        }
+                                    }
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = "😾 Gruñir",
+                                        color = if (userHasDisliked) Color(0xFFEF4444) else MiaubertoTextSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
                                     )
                                 }
-                            }) {
-                                Text(
-                                    text = "👎 Dislike",
-                                    color = if (userHasDisliked) Color(0xFFDC2626) else FbTextSecondary,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
                             }
 
-                            TextButton(onClick = { activeCommentPostId = post.id }) {
-                                Text("💬 Comentar", color = FbTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            }
-
-                            TextButton(onClick = {
-                                val shareIntent = Intent().apply {
-                                    action = Intent.ACTION_SEND
-                                    putExtra(Intent.EXTRA_TEXT, "Mira esta publicación de ${post.authorName} en MichiSocial:\n\n\"${post.content}\"")
-                                    type = "text/plain"
+                            Surface(
+                                color = MiaubertoDarkBtn,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { activeCommentPostId = post.id }
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                ) {
+                                    Text("💬 Opinar", color = MiaubertoTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
-                                context.startActivity(Intent.createChooser(shareIntent, "Compartir publicación"))
-                            }) {
-                                Text("↗️ Compartir", color = FbTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+
+                            Surface(
+                                color = MiaubertoDarkBtn,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        val shareIntent = Intent().apply {
+                                            action = Intent.ACTION_SEND
+                                            putExtra(Intent.EXTRA_TEXT, "Comunicado oficial de ${post.authorName} en Miauberto Red:\n\n\"${post.content}\"")
+                                            type = "text/plain"
+                                        }
+                                        context.startActivity(Intent.createChooser(shareIntent, "Difundir comunicado"))
+                                    }
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                ) {
+                                    Text("↗️ Difundir", color = MiaubertoTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -879,7 +970,7 @@ fun MiaubertoFacebookFeedScreen(
     if (activeCommentPostId != null) {
         AlertDialog(
             onDismissRequest = { activeCommentPostId = null },
-            title = { Text("Comentarios 💬", fontWeight = FontWeight.Bold, color = FbTextPrimary) },
+            title = { Text("Murmullos del Gremio 💬", fontWeight = FontWeight.Bold, color = MiaubertoTextPrimary) },
             text = {
                 Column(modifier = Modifier.fillMaxWidth().heightIn(max = 350.dp)) {
                     LazyColumn(
@@ -890,9 +981,10 @@ fun MiaubertoFacebookFeedScreen(
                             Row(verticalAlignment = Alignment.Top) {
                                 Box(
                                     modifier = Modifier
-                                        .size(30.dp)
+                                        .size(32.dp)
                                         .clip(CircleShape)
-                                        .background(FbBg),
+                                        .background(MiaubertoBg)
+                                        .border(1.dp, MiaubertoRed, CircleShape),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     if (!item.avatarBase64.isNullOrEmpty()) {
@@ -903,33 +995,41 @@ fun MiaubertoFacebookFeedScreen(
                                             contentScale = ContentScale.Crop
                                         )
                                     } else {
-                                        Text("👤", fontSize = 14.sp)
+                                        Text("😼", fontSize = 14.sp)
                                     }
                                 }
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Surface(
-                                    color = FbBg,
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.weight(1f)
+                                    color = MiaubertoBg,
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .border(1.dp, MiaubertoBorder, RoundedCornerShape(10.dp))
                                 ) {
-                                    Column(modifier = Modifier.padding(8.dp)) {
-                                        Text(item.authorName, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = FbTextPrimary)
-                                        Text(item.text, fontSize = 13.sp, color = FbTextPrimary)
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Text(item.authorName, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MiaubertoRed)
+                                        Text(item.text, fontSize = 13.sp, color = MiaubertoTextPrimary)
                                     }
                                 }
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(
                             value = commentInputText,
                             onValueChange = { commentInputText = it },
-                            placeholder = { Text("Escribe un comentario...") },
+                            placeholder = { Text("Escribe un murmullo...", color = MiaubertoTextSecondary, fontSize = 12.sp) },
                             modifier = Modifier.weight(1f),
-                            singleLine = true
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = MiaubertoTextPrimary,
+                                unfocusedTextColor = MiaubertoTextPrimary,
+                                focusedBorderColor = MiaubertoRed,
+                                unfocusedBorderColor = MiaubertoBorder
+                            )
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Button(
@@ -947,27 +1047,27 @@ fun MiaubertoFacebookFeedScreen(
                                     commentInputText = ""
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = FbBlue),
-                            shape = RoundedCornerShape(6.dp)
+                            colors = ButtonDefaults.buttonColors(containerColor = MiaubertoRed),
+                            shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text("Enviar", color = Color.White)
+                            Text("Enviar", color = Color.White, fontSize = 12.sp)
                         }
                     }
                 }
             },
             confirmButton = {
                 TextButton(onClick = { activeCommentPostId = null }) {
-                    Text("Cerrar", color = FbTextSecondary)
+                    Text("Cerrar", color = MiaubertoTextSecondary)
                 }
             },
-            containerColor = FbCardBg
+            containerColor = MiaubertoCardBg
         )
     }
 
     if (showEditProfileModal) {
         AlertDialog(
             onDismissRequest = { showEditProfileModal = false },
-            title = { Text("Configuración de Perfil ⚙️", fontWeight = FontWeight.Bold, color = FbTextPrimary) },
+            title = { Text("Ajustes de Perfil ⚙️", fontWeight = FontWeight.Bold, color = MiaubertoTextPrimary) },
             text = {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -975,10 +1075,10 @@ fun MiaubertoFacebookFeedScreen(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(70.dp)
+                            .size(75.dp)
                             .clip(CircleShape)
-                            .background(FbBg)
-                            .border(2.dp, FbBlue, CircleShape)
+                            .background(MiaubertoBg)
+                            .border(2.dp, MiaubertoRed, CircleShape)
                             .clickable { editAvatarPickerLauncher.launch("image/*") },
                         contentAlignment = Alignment.Center
                     ) {
@@ -997,18 +1097,24 @@ fun MiaubertoFacebookFeedScreen(
                                 contentScale = ContentScale.Crop
                             )
                         } else {
-                            Text("📷 Cambiar", color = FbBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("📷 Cambiar", color = MiaubertoRed, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     OutlinedTextField(
                         value = editNameInput,
                         onValueChange = { editNameInput = it },
-                        label = { Text("Nombre y Apellido") },
+                        label = { Text("Nombre y Apellido", color = MiaubertoTextSecondary) },
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = MiaubertoTextPrimary,
+                            unfocusedTextColor = MiaubertoTextPrimary,
+                            focusedBorderColor = MiaubertoRed,
+                            unfocusedBorderColor = MiaubertoBorder
+                        )
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -1016,9 +1122,15 @@ fun MiaubertoFacebookFeedScreen(
                     OutlinedTextField(
                         value = editUsernameInput,
                         onValueChange = { editUsernameInput = it },
-                        label = { Text("Nombre de usuario (@michi)") },
+                        label = { Text("Nombre de usuario (@michi)", color = MiaubertoTextSecondary) },
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = MiaubertoTextPrimary,
+                            unfocusedTextColor = MiaubertoTextPrimary,
+                            focusedBorderColor = MiaubertoRed,
+                            unfocusedBorderColor = MiaubertoBorder
+                        )
                     )
 
                     if (!currentUser.isAdmin) {
@@ -1026,10 +1138,16 @@ fun MiaubertoFacebookFeedScreen(
                         OutlinedTextField(
                             value = secretAdminCodeInput,
                             onValueChange = { secretAdminCodeInput = it },
-                            label = { Text("Clave Secreta Admin (Opcional)") },
+                            label = { Text("Clave Secreta Admin (Opcional)", color = MiaubertoTextSecondary) },
                             visualTransformation = PasswordVisualTransformation(),
                             modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = MiaubertoTextPrimary,
+                                unfocusedTextColor = MiaubertoTextPrimary,
+                                focusedBorderColor = MiaubertoRed,
+                                unfocusedBorderColor = MiaubertoBorder
+                            )
                         )
                     }
 
@@ -1051,9 +1169,9 @@ fun MiaubertoFacebookFeedScreen(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(6.dp)
+                        shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("🗑️ Eliminar mi Usuario / Cuenta", color = Color.White, fontSize = 12.sp)
+                        Text("🗑️ Eliminar mi Cuenta del Gremio", color = Color.White, fontSize = 12.sp)
                     }
                 }
             },
@@ -1091,8 +1209,8 @@ fun MiaubertoFacebookFeedScreen(
                                 }
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = FbBlue),
-                    shape = RoundedCornerShape(6.dp)
+                    colors = ButtonDefaults.buttonColors(containerColor = MiaubertoRed),
+                    shape = RoundedCornerShape(8.dp)
                 ) {
                     if (isSavingProfile) {
                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp))
@@ -1103,10 +1221,10 @@ fun MiaubertoFacebookFeedScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showEditProfileModal = false }) {
-                    Text("Cancelar", color = FbTextSecondary)
+                    Text("Cancelar", color = MiaubertoTextSecondary)
                 }
             },
-            containerColor = FbCardBg
+            containerColor = MiaubertoCardBg
         )
     }
 }
