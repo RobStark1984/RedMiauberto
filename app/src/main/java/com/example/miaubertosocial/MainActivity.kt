@@ -5,7 +5,6 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,13 +23,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+
+// Paleta de Colores Estilo Facebook
+val FbBlue = Color(0xFF1877F2)
+val FbBg = Color(0xFFF0F2F5)
+val FbCardBg = Color(0xFFFFFFFF)
+val FbTextPrimary = Color(0xFF050505)
+val FbTextSecondary = Color(0xFF65676B)
+val FbDivider = Color(0xFFCED0D4)
 
 data class UserProfile(
     val uid: String,
@@ -45,7 +51,6 @@ data class Post(
     val username: String,
     val avatarEmoji: String,
     val content: String,
-    val mediaEmoji: String? = null,
     val linkUrl: String? = null,
     val fileUrl: String? = null,
     val fileName: String? = null,
@@ -57,10 +62,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MiaubertoTheme {
+            MaterialTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = Color(0xFF0F172A)
+                    color = FbBg
                 ) {
                     AppNavigationScreen()
                 }
@@ -87,7 +92,7 @@ fun AppNavigationScreen() {
                             uid = user.uid,
                             name = doc.getString("name") ?: "Michi Amigo",
                             username = doc.getString("username") ?: "@michi",
-                            avatarEmoji = doc.getString("avatarEmoji") ?: "🕶️😼"
+                            avatarEmoji = doc.getString("avatarEmoji") ?: "🐱"
                         )
                     }
                     isLoadingProfile = false
@@ -102,7 +107,7 @@ fun AppNavigationScreen() {
 
     if (isLoadingProfile) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = Color(0xFF0EA5E9))
+            CircularProgressIndicator(color = FbBlue)
         }
     } else if (currentUserProfile == null) {
         AuthAndProfileScreen(
@@ -111,7 +116,7 @@ fun AppNavigationScreen() {
             }
         )
     } else {
-        MiaubertoSocialFeedScreen(
+        MiaubertoFacebookFeedScreen(
             currentUser = currentUserProfile!!,
             onLogout = {
                 auth.signOut()
@@ -132,41 +137,49 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
     var passwordInput by remember { mutableStateOf("") }
     var nameInput by remember { mutableStateOf("") }
     var usernameInput by remember { mutableStateOf("") }
-    var selectedAvatarEmoji by remember { mutableStateOf("🕶️😼") }
+    var selectedAvatarEmoji by remember { mutableStateOf("🐱") }
     
     var errorMessage by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
 
-    val avatarOptions = listOf("🕶️😼", "😺", "😸", "😻", "😼", "😽", "🐱", "🦁", "🐯", "🤖", "🚀")
+    val avatarOptions = listOf("🐱", "😺", "😸", "😻", "😼", "😽", "🦁", "🐯", "🐶", "🐺")
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .background(FbBg)
+            .padding(20.dp),
         contentAlignment = Alignment.Center
     ) {
         Card(
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, Color(0xFF334155), RoundedCornerShape(16.dp))
+            colors = CardDefaults.cardColors(containerColor = FbCardBg),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
             Column(
                 modifier = Modifier.padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = if (isRegisterMode) "¡Únete a RedMiauberto! 🐾" else "Iniciar Sesión 🕶️",
-                    color = Color.White,
-                    fontSize = 20.sp,
+                    text = "facebook",
+                    color = FbBlue,
+                    fontSize = 32.sp,
                     fontWeight = FontWeight.Bold
                 )
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = if (isRegisterMode) "Crea una cuenta para conectarte con tus amigos" else "Inicia sesión en tu cuenta",
+                    color = FbTextSecondary,
+                    fontSize = 13.sp
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
 
                 if (isRegisterMode) {
-                    Text("Selecciona tu Avatar Michi:", color = Color(0xFF94A3B8), fontSize = 12.sp)
+                    Text("Elige tu Foto de Perfil:", color = FbTextSecondary, fontSize = 12.sp)
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.padding(vertical = 8.dp)
@@ -176,7 +189,12 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                                 modifier = Modifier
                                     .size(44.dp)
                                     .clip(CircleShape)
-                                    .background(if (selectedAvatarEmoji == emoji) Color(0xFF0EA5E9) else Color(0xFF0F172A))
+                                    .background(if (selectedAvatarEmoji == emoji) FbBlue.copy(alpha = 0.2f) else FbBg)
+                                    .border(
+                                        width = if (selectedAvatarEmoji == emoji) 2.dp else 0.dp,
+                                        color = if (selectedAvatarEmoji == emoji) FbBlue else Color.Transparent,
+                                        shape = CircleShape
+                                    )
                                     .clickable { selectedAvatarEmoji = emoji },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -188,7 +206,7 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                     OutlinedTextField(
                         value = nameInput,
                         onValueChange = { nameInput = it },
-                        label = { Text("Tu Nombre o Apodo") },
+                        label = { Text("Nombre y Apellido") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -197,7 +215,7 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                     OutlinedTextField(
                         value = usernameInput,
                         onValueChange = { usernameInput = it },
-                        label = { Text("Nombre de Usuario (ej: @michi_pro)") },
+                        label = { Text("Nombre de usuario (@michi)") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -207,7 +225,7 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                 OutlinedTextField(
                     value = emailInput,
                     onValueChange = { emailInput = it },
-                    label = { Text("Correo Electrónico") },
+                    label = { Text("Correo electrónico") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
@@ -224,7 +242,7 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
 
                 if (errorMessage.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(errorMessage, color = Color(0xFFEF4444), fontSize = 12.sp)
+                    Text(errorMessage, color = Color.Red, fontSize = 12.sp)
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -232,7 +250,7 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                 Button(
                     onClick = {
                         if (emailInput.isBlank() || passwordInput.isBlank()) {
-                            errorMessage = "Por favor completa correo y contraseña"
+                            errorMessage = "Por favor completa todos los campos"
                             return@Button
                         }
                         isLoading = true
@@ -263,7 +281,7 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                                 }
                                 .addOnFailureListener { e ->
                                     isLoading = false
-                                    errorMessage = e.localizedMessage ?: "Error al registrar usuario"
+                                    errorMessage = e.localizedMessage ?: "Error al registrarse"
                                 }
                         } else {
                             auth.signInWithEmailAndPassword(emailInput.trim(), passwordInput.trim())
@@ -276,38 +294,42 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                                                 uid = uid,
                                                 name = doc.getString("name") ?: "Michi",
                                                 username = doc.getString("username") ?: "@michi",
-                                                avatarEmoji = doc.getString("avatarEmoji") ?: "🕶️😼"
+                                                avatarEmoji = doc.getString("avatarEmoji") ?: "🐱"
                                             )
                                             onProfileCreated(profile)
                                         }
                                 }
                                 .addOnFailureListener { e ->
                                     isLoading = false
-                                    errorMessage = e.localizedMessage ?: "Error al iniciar sesión"
+                                    errorMessage = e.localizedMessage ?: "Error de autenticación"
                                 }
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0EA5E9)),
-                    enabled = !isLoading
+                    colors = ButtonDefaults.buttonColors(containerColor = FbBlue),
+                    shape = RoundedCornerShape(6.dp)
                 ) {
                     if (isLoading) {
                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
                     } else {
-                        Text(if (isRegisterMode) "Crear mi Perfil" else "Entrar", color = Color.White)
+                        Text(if (isRegisterMode) "Crear cuenta nueva" else "Iniciar sesión", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Divider(color = FbDivider)
+
+                Spacer(modifier = Modifier.height(12.dp))
 
                 TextButton(onClick = { 
                     isRegisterMode = !isRegisterMode
                     errorMessage = ""
                 }) {
                     Text(
-                        if (isRegisterMode) "¿Ya tienes cuenta? Inicia Sesión" else "¿No tienes cuenta? Regístrate gratis",
-                        color = Color(0xFF38BDF8),
-                        fontSize = 12.sp
+                        if (isRegisterMode) "¿Ya tienes una cuenta?" else "Crear cuenta de Facebook",
+                        color = FbBlue,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }
@@ -317,18 +339,13 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MiaubertoSocialFeedScreen(currentUser: UserProfile, onLogout: () -> Unit) {
+fun MiaubertoFacebookFeedScreen(currentUser: UserProfile, onLogout: () -> Unit) {
     val db = remember { FirebaseFirestore.getInstance() }
     val context = LocalContext.current
 
     var posts by remember { mutableStateOf<List<Post>>(emptyList()) }
-    var showNewPostModal by remember { mutableStateOf(false) }
-    
     var newPostContentText by remember { mutableStateOf("") }
-    var selectedEmojiTag by remember { mutableStateOf("🐾") }
-    var linkInputUrl by remember { mutableStateOf("") }
-    var fileInputUrl by remember { mutableStateOf("") }
-    var fileInputName by remember { mutableStateOf("") }
+    var isPosting by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         db.collection("posts")
@@ -341,13 +358,12 @@ fun MiaubertoSocialFeedScreen(currentUser: UserProfile, onLogout: () -> Unit) {
                         id = doc.id,
                         authorName = doc.getString("authorName") ?: "Michi",
                         username = doc.getString("username") ?: "@michi",
-                        avatarEmoji = doc.getString("avatarEmoji") ?: "😼",
+                        avatarEmoji = doc.getString("avatarEmoji") ?: "🐱",
                         content = doc.getString("content") ?: "",
-                        mediaEmoji = doc.getString("mediaEmoji"),
                         linkUrl = doc.getString("linkUrl"),
                         fileUrl = doc.getString("fileUrl"),
                         fileName = doc.getString("fileName"),
-                        timestamp = "En vivo ⚡",
+                        timestamp = "Hace un momento",
                         likesCount = (doc.getLong("likesCount") ?: 0L).toInt()
                     )
                 }
@@ -359,164 +375,206 @@ fun MiaubertoSocialFeedScreen(currentUser: UserProfile, onLogout: () -> Unit) {
         topBar = {
             TopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(currentUser.avatarEmoji, fontSize = 24.sp)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text("MIAUBERTO SOCIAL", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                            Text("${currentUser.name} (${currentUser.username})", color = Color(0xFF38BDF8), fontSize = 11.sp)
-                        }
-                    }
+                    Text(
+                        "facebook",
+                        color = FbBlue,
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 },
                 actions = {
                     TextButton(onClick = onLogout) {
-                        Text("Salir 🚪", color = Color(0xFFEF4444), fontSize = 12.sp)
+                        Text("Salir", color = FbTextSecondary, fontWeight = FontWeight.Bold)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1E293B))
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = FbCardBg)
             )
         },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showNewPostModal = true },
-                containerColor = Color(0xFF0EA5E9),
-                contentColor = Color.White
-            ) {
-                Text("✍️", fontSize = 22.sp)
-            }
-        },
-        containerColor = Color(0xFF0F172A)
+        containerColor = FbBg
     ) { innerPadding ->
-        Column(
+        LazyColumn(
+            contentPadding = PaddingValues(bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            LazyColumn(
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                items(posts) { post ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, Color(0xFF334155), RoundedCornerShape(12.dp))
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFF0F172A)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(post.avatarEmoji, fontSize = 20.sp)
-                                }
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(post.authorName, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                    Text(post.username + " • " + post.timestamp, color = Color(0xFF94A3B8), fontSize = 11.sp)
-                                }
+            // CAJA "QUÉ ESTÁS PENSANDO" ESTILO FACEBOOK
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = FbCardBg),
+                    shape = RoundedCornerShape(0.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(FbBg),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(currentUser.avatarEmoji, fontSize = 22.sp)
                             }
 
+                            Spacer(modifier = Modifier.width(10.dp))
+
+                            OutlinedTextField(
+                                value = newPostContentText,
+                                onValueChange = { newPostContentText = it },
+                                placeholder = { Text("¿Qué estás pensando, ${currentUser.name.split(" ")[0]}?") },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 50.dp, max = 120.dp),
+                                shape = RoundedCornerShape(20.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    unfocusedBorderColor = Color.Transparent,
+                                    focusedBorderColor = FbBlue,
+                                    unfocusedContainerColor = FbBg,
+                                    focusedContainerColor = FbBg
+                                )
+                            )
+                        }
+
+                        if (newPostContentText.isNotBlank()) {
                             Spacer(modifier = Modifier.height(10.dp))
-
-                            if (post.content.isNotBlank()) {
-                                Text(post.content, color = Color.White, fontSize = 14.sp, lineHeight = 20.sp)
-                            }
-
-                            if (!post.mediaEmoji.isNullOrEmpty()) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(70.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(Color(0xFF020617)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(post.mediaEmoji, fontSize = 36.sp)
-                                }
-                            }
-
-                            if (!post.linkUrl.isNullOrEmpty()) {
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Surface(
-                                    color = Color(0xFF0F172A),
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .border(1.dp, Color(0xFF0EA5E9), RoundedCornerShape(8.dp))
-                                        .clickable {
-                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(post.linkUrl))
-                                            context.startActivity(intent)
-                                        }
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("🎬🔗", fontSize = 24.sp)
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = if (post.linkUrl.contains("youtube") || post.linkUrl.contains("youtu.be")) "Ver Video en YouTube" else "Abrir Enlace Web",
-                                                color = Color(0xFF38BDF8),
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 13.sp
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                Button(
+                                    onClick = {
+                                        if (newPostContentText.isNotBlank() && !isPosting) {
+                                            isPosting = true
+                                            val newPostMap = hashMapOf(
+                                                "authorName" to currentUser.name,
+                                                "username" to currentUser.username,
+                                                "avatarEmoji" to currentUser.avatarEmoji,
+                                                "content" to newPostContentText,
+                                                "likesCount" to 0,
+                                                "createdAt" to System.currentTimeMillis()
                                             )
-                                            Text(
-                                                text = post.linkUrl,
-                                                color = Color(0xFF94A3B8),
-                                                fontSize = 11.sp,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
+                                            db.collection("posts").add(newPostMap)
+                                                .addOnSuccessListener {
+                                                    newPostContentText = ""
+                                                    isPosting = false
+                                                }
+                                                .addOnFailureListener {
+                                                    isPosting = false
+                                                }
                                         }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = FbBlue),
+                                    shape = RoundedCornerShape(6.dp),
+                                    enabled = !isPosting
+                                ) {
+                                    if (isPosting) {
+                                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp))
+                                    } else {
+                                        Text("Publicar", color = Color.White, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+            }
 
-                            if (!post.fileUrl.isNullOrEmpty()) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Surface(
-                                    color = Color(0xFF0F172A),
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .border(1.dp, Color(0xFF10B981), RoundedCornerShape(8.dp))
-                                        .clickable {
-                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(post.fileUrl))
-                                            context.startActivity(intent)
-                                        }
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("📁📄", fontSize = 24.sp)
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = post.fileName ?: "Descargar Archivo",
-                                                color = Color(0xFF10B981),
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 13.sp
-                                            )
-                                            Text(
-                                                text = post.fileUrl,
-                                                color = Color(0xFF94A3B8),
-                                                fontSize = 11.sp,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
+            // LISTA DE PUBLICACIONES DEL MURO
+            items(posts) { post ->
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = FbCardBg),
+                    shape = RoundedCornerShape(0.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(FbBg),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(post.avatarEmoji, fontSize = 22.sp)
+                            }
+
+                            Spacer(modifier = Modifier.width(10.dp))
+
+                            Column {
+                                Text(
+                                    text = post.authorName,
+                                    color = FbTextPrimary,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "${post.username} • ${post.timestamp} 🌐",
+                                    color = FbTextSecondary,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        if (post.content.isNotBlank()) {
+                            Text(
+                                text = post.content,
+                                color = FbTextPrimary,
+                                fontSize = 15.sp,
+                                lineHeight = 21.sp
+                            )
+                        }
+
+                        if (!post.linkUrl.isNullOrEmpty()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Surface(
+                                color = FbBg,
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(post.linkUrl))
+                                        context.startActivity(intent)
                                     }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("🔗", fontSize = 20.sp)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = post.linkUrl,
+                                        color = FbBlue,
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Divider(color = FbDivider, thickness = 0.5.dp)
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceAround
+                        ) {
+                            TextButton(onClick = { }) {
+                                Text("👍 Me gusta", color = FbTextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            TextButton(onClick = { }) {
+                                Text("💬 Comentar", color = FbTextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            TextButton(onClick = { }) {
+                                Text("↗️ Compartir", color = FbTextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
@@ -524,111 +582,4 @@ fun MiaubertoSocialFeedScreen(currentUser: UserProfile, onLogout: () -> Unit) {
             }
         }
     }
-
-    if (showNewPostModal) {
-        AlertDialog(
-            onDismissRequest = { showNewPostModal = false },
-            title = { Text("Nueva Publicación ✍️", color = Color.White) },
-            text = {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(
-                        value = newPostContentText,
-                        onValueChange = { newPostContentText = it },
-                        label = { Text("¿Qué quieres compartir, ${currentUser.name}?") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(90.dp),
-                        maxLines = 4
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedTextField(
-                        value = linkInputUrl,
-                        onValueChange = { linkInputUrl = it },
-                        label = { Text("🎬 Link de Video / Web (opcional)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedTextField(
-                        value = fileInputName,
-                        onValueChange = { fileInputName = it },
-                        label = { Text("📄 Nombre del Archivo (opcional)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    OutlinedTextField(
-                        value = fileInputUrl,
-                        onValueChange = { fileInputUrl = it },
-                        label = { Text("📁 Link del Archivo / Documento") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Text("Sticker / Emoji:", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.padding(top = 4.dp)
-                    ) {
-                        listOf("🐾", "🎬", "📁", "🎮", "🚀", "🍕").forEach { emoji ->
-                            FilterChip(
-                                selected = selectedEmojiTag == emoji,
-                                onClick = { selectedEmojiTag = emoji },
-                                label = { Text(emoji, fontSize = 14.sp) }
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (newPostContentText.isNotBlank() || linkInputUrl.isNotBlank() || fileInputUrl.isNotBlank()) {
-                            val newPostMap = hashMapOf(
-                                "authorName" to currentUser.name,
-                                "username" to currentUser.username,
-                                "avatarEmoji" to currentUser.avatarEmoji,
-                                "content" to newPostContentText,
-                                "mediaEmoji" to selectedEmojiTag,
-                                "linkUrl" to linkInputUrl.ifBlank { null },
-                                "fileUrl" to fileInputUrl.ifBlank { null },
-                                "fileName" to fileInputName.ifBlank { "Archivo adjunto" },
-                                "likesCount" to 0,
-                                "createdAt" to System.currentTimeMillis()
-                            )
-                            db.collection("posts").add(newPostMap)
-                            
-                            newPostContentText = ""
-                            linkInputUrl = ""
-                            fileInputUrl = ""
-                            fileInputName = ""
-                            showNewPostModal = false
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0EA5E9))
-                ) { Text("Publicar en la nube", color = Color.White) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showNewPostModal = false }) { Text("Cancelar", color = Color.Gray) }
-            },
-            containerColor = Color(0xFF1E293B)
-        )
-    }
-}
-
-@Composable
-fun MiaubertoTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = darkColorScheme(
-            background = Color(0xFF0F172A),
-            surface = Color(0xFF1E293B)
-        ),
-        content = content
-    )
 }
