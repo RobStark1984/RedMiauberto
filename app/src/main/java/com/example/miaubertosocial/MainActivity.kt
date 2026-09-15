@@ -1,6 +1,7 @@
 package com.example.miaubertosocial
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -36,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import java.io.ByteArrayOutputStream
@@ -58,6 +60,14 @@ data class UserProfile(
     val isAdmin: Boolean = false
 )
 
+data class Comment(
+    val id: String = "",
+    val authorName: String = "",
+    val avatarBase64: String? = null,
+    val text: String = "",
+    val timestamp: Long = 0L
+)
+
 data class Post(
     val id: String,
     val authorName: String,
@@ -66,7 +76,9 @@ data class Post(
     val content: String,
     val postImageBase64: String? = null,
     val timestamp: String,
-    val likesCount: Int = 0
+    val likesList: List<String> = emptyList(),
+    val dislikesList: List<String> = emptyList(),
+    val commentsCount: Int = 0
 )
 
 fun uriToBase64(context: Context, uri: Uri, maxSize: Int = 400): String? {
@@ -88,9 +100,8 @@ fun uriToBase64(context: Context, uri: Uri, maxSize: Int = 400): String? {
     }
 }
 
-// Función para extraer URL de YouTube
 fun extractYoutubeUrl(text: String): String? {
-    val pattern = "(?i)\\b((?:https?://|www\\d{0,3}[.]|[a-z0-9.\\-]+[.][a-z]{2,4}/)(?:[^\\s()<>]+|\\((?:[^\\s()<>]+|(?:\\([^\\s()<>]+\\)))*\\))+(?:\\((?:[^\\s()<>]+|(?:\\([^\\s()<>]+\\)))*\\)|[^\\s`!()\\[\\]{};:'\".,<>?«»“”‘’]))"
+    val pattern = "(?i)\\b((?:https?://|www\\d{0,3}[.]|[a-z0-9.\\-]+[.][a-z]{2,4}/)(?:[^\\s()<>]+|\\((?:[^\\s()<>]+|(?:\\([^\\s()<>]+\\)))*\\))+(?:\\((?:[^\\s()<>]+\\)|(?:\\([^\\s()<>]+\\)))*\\)|[^\\s`!()\\[\\]{};:'\".,<>?«»“”‘’]))"
     val compiledPattern = Pattern.compile(pattern)
     val matcher = compiledPattern.matcher(text)
     while (matcher.find()) {
@@ -439,6 +450,11 @@ fun MiaubertoFacebookFeedScreen(
     var selectedPostImageUri by remember { mutableStateOf<Uri?>(null) }
     var isPosting by remember { mutableStateOf(false) }
 
+    // Estado Modal Comentarios
+    var activeCommentPostId by remember { mutableStateOf<String?>(null) }
+    var commentsList by remember { mutableStateOf<List<Comment>>(emptyList()) }
+    var commentInputText by remember { mutableStateOf("") }
+
     var showEditProfileModal by remember { mutableStateOf(false) }
     var editNameInput by remember { mutableStateOf(currentUser.name) }
     var editUsernameInput by remember { mutableStateOf(currentUser.username) }
@@ -458,6 +474,7 @@ fun MiaubertoFacebookFeedScreen(
         editAvatarUri = uri
     }
 
+    // Escuchar publicaciones en vivo
     LaunchedEffect(Unit) {
         db.collection("posts")
             .orderBy("createdAt", Query.Direction.DESCENDING)
@@ -465,6 +482,8 @@ fun MiaubertoFacebookFeedScreen(
                 if (error != null || snapshot == null) return@addSnapshotListener
 
                 val fetchedPosts = snapshot.documents.mapNotNull { doc ->
+                    val likesList = doc.get("likesList") as? List<String> ?: emptyList()
+                    val dislikesList = doc.get("dislikesList") as? List<String> ?: emptyList()
                     Post(
                         id = doc.id,
                         authorName = doc.getString("authorName") ?: "Michi",
@@ -473,11 +492,34 @@ fun MiaubertoFacebookFeedScreen(
                         content = doc.getString("content") ?: "",
                         postImageBase64 = doc.getString("postImageBase64"),
                         timestamp = "Hace un momento",
-                        likesCount = (doc.getLong("likesCount") ?: 0L).toInt()
+                        likesList = likesList,
+                        dislikesList = dislikesList,
+                        commentsCount = (doc.getLong("commentsCount") ?: 0L).toInt()
                     )
                 }
                 posts = fetchedPosts
             }
+    }
+
+    // Escuchar comentarios del post activo
+    LaunchedEffect(activeCommentPostId) {
+        if (activeCommentPostId != null) {
+            db.collection("posts").document(activeCommentPostId!!).collection("comments")
+                .orderBy("timestamp", Query.Direction.ASCENDING)
+                .addSnapshotListener { snapshot, _ ->
+                    if (snapshot != null) {
+                        commentsList = snapshot.documents.mapNotNull { doc ->
+                            Comment(
+                                id = doc.id,
+                                authorName = doc.getString("authorName") ?: "Michi",
+                                avatarBase64 = doc.getString("avatarBase64"),
+                                text = doc.getString("text") ?: "",
+                                timestamp = doc.getLong("timestamp") ?: 0L
+                            )
+                        }
+                    }
+                }
+        }
     }
 
     Scaffold(
@@ -613,7 +655,9 @@ fun MiaubertoFacebookFeedScreen(
                                             "avatarBase64" to currentUser.avatarBase64,
                                             "content" to newPostContentText,
                                             "postImageBase64" to imageBase64,
-                                            "likesCount" to 0,
+                                            "likesList" to emptyList<String>(),
+                                            "dislikesList" to emptyList<String>(),
+                                            "commentsCount" to 0,
                                             "createdAt" to System.currentTimeMillis()
                                         )
                                         db.collection("posts").add(newPostMap)
@@ -644,6 +688,8 @@ fun MiaubertoFacebookFeedScreen(
 
             items(posts) { post ->
                 val detectedYoutubeUrl = extractYoutubeUrl(post.content)
+                val userHasLiked = post.likesList.contains(currentUser.uid)
+                val userHasDisliked = post.dislikesList.contains(currentUser.uid)
 
                 Card(
                     colors = CardDefaults.cardColors(containerColor = FbCardBg),
@@ -711,7 +757,6 @@ fun MiaubertoFacebookFeedScreen(
                             )
                         }
 
-                        // REPRODUCTOR INTEGRADO DE YOUTUBE DENTRO DEL MURO
                         if (detectedYoutubeUrl != null) {
                             Spacer(modifier = Modifier.height(10.dp))
                             val embedUrl = getEmbedYoutubeUrl(detectedYoutubeUrl)
@@ -750,28 +795,179 @@ fun MiaubertoFacebookFeedScreen(
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Divider(color = FbDivider, thickness = 0.5.dp)
-                        Spacer(modifier = Modifier.height(6.dp))
+                        // Resumen de Me gusta / No me gusta / Comentarios
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "👍 ${post.likesList.size}  •  👎 ${post.dislikesList.size}",
+                                color = FbTextSecondary,
+                                fontSize = 12.sp
+                            )
+                            Text(
+                                text = "💬 ${post.commentsCount} comentarios",
+                                color = FbTextSecondary,
+                                fontSize = 12.sp
+                            )
+                        }
 
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Divider(color = FbDivider, thickness = 0.5.dp)
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // BOTONES INTERACTIVOS (LIKE, DISLIKE, COMENTAR, COMPARTIR)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceAround
                         ) {
-                            TextButton(onClick = { }) {
-                                Text("👍 Me gusta", color = FbTextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            TextButton(onClick = {
+                                val postRef = db.collection("posts").document(post.id)
+                                if (userHasLiked) {
+                                    postRef.update("likesList", FieldValue.arrayRemove(currentUser.uid))
+                                } else {
+                                    postRef.update(
+                                        "likesList", FieldValue.arrayUnion(currentUser.uid),
+                                        "dislikesList", FieldValue.arrayRemove(currentUser.uid)
+                                    )
+                                }
+                            }) {
+                                Text(
+                                    text = if (userHasLiked) "👍 Me gusta" else "👍 Me gusta",
+                                    color = if (userHasLiked) FbBlue else FbTextSecondary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
                             }
-                            TextButton(onClick = { }) {
-                                Text("💬 Comentar", color = FbTextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+
+                            TextButton(onClick = {
+                                val postRef = db.collection("posts").document(post.id)
+                                if (userHasDisliked) {
+                                    postRef.update("dislikesList", FieldValue.arrayRemove(currentUser.uid))
+                                } else {
+                                    postRef.update(
+                                        "dislikesList", FieldValue.arrayUnion(currentUser.uid),
+                                        "likesList", FieldValue.arrayRemove(currentUser.uid)
+                                    )
+                                }
+                            }) {
+                                Text(
+                                    text = "👎 Dislike",
+                                    color = if (userHasDisliked) Color(0xFFDC2626) else FbTextSecondary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
                             }
-                            TextButton(onClick = { }) {
-                                Text("↗️ Compartir", color = FbTextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+
+                            TextButton(onClick = { activeCommentPostId = post.id }) {
+                                Text("💬 Comentar", color = FbTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+
+                            TextButton(onClick = {
+                                val shareIntent = Intent().apply {
+                                    action = Intent.ACTION_SEND
+                                    putExtra(Intent.EXTRA_TEXT, "Mira esta publicación de ${post.authorName} en Miauberto Social:\n\n\"${post.content}\"")
+                                    type = "text/plain"
+                                }
+                                context.startActivity(Intent.createChooser(shareIntent, "Compartir publicación"))
+                            }) {
+                                Text("↗️ Compartir", color = FbTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
                 }
             }
         }
+    }
+
+    // MODAL SECCIÓN DE COMENTARIOS
+    if (activeCommentPostId != null) {
+        AlertDialog(
+            onDismissRequest = { activeCommentPostId = null },
+            title = { Text("Comentarios 💬", fontWeight = FontWeight.Bold, color = FbTextPrimary) },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth().heightIn(max = 350.dp)) {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(commentsList) { item ->
+                            Row(verticalAlignment = Alignment.Top) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(30.dp)
+                                        .clip(CircleShape)
+                                        .background(FbBg),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (!item.avatarBase64.isNullOrEmpty()) {
+                                        AsyncImage(
+                                            model = item.avatarBase64,
+                                            contentDescription = "Avatar",
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    } else {
+                                        Text("👤", fontSize = 14.sp)
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Surface(
+                                    color = FbBg,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp)) {
+                                        Text(item.authorName, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = FbTextPrimary)
+                                        Text(item.text, fontSize = 13.sp, color = FbTextPrimary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = commentInputText,
+                            onValueChange = { commentInputText = it },
+                            placeholder = { Text("Escribe un comentario...") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Button(
+                            onClick = {
+                                if (commentInputText.isNotBlank()) {
+                                    val postRef = db.collection("posts").document(activeCommentPostId!!)
+                                    val commentData = hashMapOf(
+                                        "authorName" to currentUser.name,
+                                        "avatarBase64" to currentUser.avatarBase64,
+                                        "text" to commentInputText.trim(),
+                                        "timestamp" to System.currentTimeMillis()
+                                    )
+                                    postRef.collection("comments").add(commentData)
+                                    postRef.update("commentsCount", FieldValue.increment(1))
+                                    commentInputText = ""
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = FbBlue),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text("Enviar", color = Color.White)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { activeCommentPostId = null }) {
+                    Text("Cerrar", color = FbTextSecondary)
+                }
+            },
+            containerColor = FbCardBg
+        )
     }
 
     if (showEditProfileModal) {
