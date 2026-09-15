@@ -5,11 +5,13 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,15 +23,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 
 data class UserProfile(
-    val id: String,
+    val uid: String,
     val name: String,
     val username: String,
     val avatarEmoji: String
@@ -58,7 +62,253 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = Color(0xFF0F172A)
                 ) {
-                    MiaubertoSocialScreen()
+                    AppNavigationScreen()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AppNavigationScreen() {
+    val auth = remember { FirebaseAuth.getInstance() }
+    val db = remember { FirebaseFirestore.getInstance() }
+    
+    var currentUserProfile by remember { mutableStateOf<UserProfile?>(null) }
+    var isLoadingProfile by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        val user = auth.currentUser
+        if (user != null) {
+            db.collection("users").document(user.uid).get()
+                .addOnSuccessListener { doc ->
+                    if (doc.exists()) {
+                        currentUserProfile = UserProfile(
+                            uid = user.uid,
+                            name = doc.getString("name") ?: "Michi Amigo",
+                            username = doc.getString("username") ?: "@michi",
+                            avatarEmoji = doc.getString("avatarEmoji") ?: "🕶️😼"
+                        )
+                    }
+                    isLoadingProfile = false
+                }
+                .addOnFailureListener {
+                    isLoadingProfile = false
+                }
+        } else {
+            isLoadingProfile = false
+        }
+    }
+
+    if (isLoadingProfile) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = Color(0xFF0EA5E9))
+        }
+    } else if (currentUserProfile == null) {
+        AuthAndProfileScreen(
+            onProfileCreated = { profile ->
+                currentUserProfile = profile
+            }
+        )
+    } else {
+        MiaubertoSocialFeedScreen(
+            currentUser = currentUserProfile!!,
+            onLogout = {
+                auth.signOut()
+                currentUserProfile = null
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
+    val auth = remember { FirebaseAuth.getInstance() }
+    val db = remember { FirebaseFirestore.getInstance() }
+
+    var isRegisterMode by remember { mutableStateOf(true) }
+    var emailInput by remember { mutableStateOf("") }
+    var passwordInput by remember { mutableStateOf("") }
+    var nameInput by remember { mutableStateOf("") }
+    var usernameInput by remember { mutableStateOf("") }
+    var selectedAvatarEmoji by remember { mutableStateOf("🕶️😼") }
+    
+    var errorMessage by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+
+    val avatarOptions = listOf("🕶️😼", "😺", "😸", "😻", "😼", "😽", "🐱", "🦁", "🐯", "🤖", "🚀")
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, Color(0xFF334155), RoundedCornerShape(16.dp))
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = if (isRegisterMode) "¡Únete a RedMiauberto! 🐾" else "Iniciar Sesión 🕶️",
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                if (isRegisterMode) {
+                    Text("Selecciona tu Avatar Michi:", color = Color(0xFF94A3B8), fontSize = 12.sp)
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    ) {
+                        items(avatarOptions) { emoji ->
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(if (selectedAvatarEmoji == emoji) Color(0xFF0EA5E9) else Color(0xFF0F172A))
+                                    .clickable { selectedAvatarEmoji = emoji },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(emoji, fontSize = 22.sp)
+                            }
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = nameInput,
+                        onValueChange = { nameInput = it },
+                        label = { Text("Tu Nombre o Apodo") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = usernameInput,
+                        onValueChange = { usernameInput = it },
+                        label = { Text("Nombre de Usuario (ej: @michi_pro)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                OutlinedTextField(
+                    value = emailInput,
+                    onValueChange = { emailInput = it },
+                    label = { Text("Correo Electrónico") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = passwordInput,
+                    onValueChange = { passwordInput = it },
+                    label = { Text("Contraseña") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+
+                if (errorMessage.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(errorMessage, color = Color(0xFFEF4444), fontSize = 12.sp)
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = {
+                        if (emailInput.isBlank() || passwordInput.isBlank()) {
+                            errorMessage = "Por favor completa correo y contraseña"
+                            return@Button
+                        }
+                        isLoading = true
+                        errorMessage = ""
+
+                        if (isRegisterMode) {
+                            val formattedUsername = if (usernameInput.startsWith("@")) usernameInput else "@$usernameInput"
+                            auth.createUserWithEmailAndPassword(emailInput.trim(), passwordInput.trim())
+                                .addOnSuccessListener { result ->
+                                    val uid = result.user?.uid ?: ""
+                                    val profile = UserProfile(
+                                        uid = uid,
+                                        name = nameInput.ifBlank { "Michi Amigo" },
+                                        username = formattedUsername.ifBlank { "@michi" },
+                                        avatarEmoji = selectedAvatarEmoji
+                                    )
+                                    val userMap = hashMapOf(
+                                        "name" to profile.name,
+                                        "username" to profile.username,
+                                        "avatarEmoji" to profile.avatarEmoji,
+                                        "email" to emailInput.trim()
+                                    )
+                                    db.collection("users").document(uid).set(userMap)
+                                        .addOnSuccessListener {
+                                            isLoading = false
+                                            onProfileCreated(profile)
+                                        }
+                                }
+                                .addOnFailureListener { e ->
+                                    isLoading = false
+                                    errorMessage = e.localizedMessage ?: "Error al registrar usuario"
+                                }
+                        } else {
+                            auth.signInWithEmailAndPassword(emailInput.trim(), passwordInput.trim())
+                                .addOnSuccessListener { result ->
+                                    val uid = result.user?.uid ?: ""
+                                    db.collection("users").document(uid).get()
+                                        .addOnSuccessListener { doc ->
+                                            isLoading = false
+                                            val profile = UserProfile(
+                                                uid = uid,
+                                                name = doc.getString("name") ?: "Michi",
+                                                username = doc.getString("username") ?: "@michi",
+                                                avatarEmoji = doc.getString("avatarEmoji") ?: "🕶️😼"
+                                            )
+                                            onProfileCreated(profile)
+                                        }
+                                }
+                                .addOnFailureListener { e ->
+                                    isLoading = false
+                                    errorMessage = e.localizedMessage ?: "Error al iniciar sesión"
+                                }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0EA5E9)),
+                    enabled = !isLoading
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
+                    } else {
+                        Text(if (isRegisterMode) "Crear mi Perfil" else "Entrar", color = Color.White)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                TextButton(onClick = { 
+                    isRegisterMode = !isRegisterMode
+                    errorMessage = ""
+                }) {
+                    Text(
+                        if (isRegisterMode) "¿Ya tienes cuenta? Inicia Sesión" else "¿No tienes cuenta? Regístrate gratis",
+                        color = Color(0xFF38BDF8),
+                        fontSize = 12.sp
+                    )
                 }
             }
         }
@@ -67,18 +317,9 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MiaubertoSocialScreen() {
+fun MiaubertoSocialFeedScreen(currentUser: UserProfile, onLogout: () -> Unit) {
     val db = remember { FirebaseFirestore.getInstance() }
     val context = LocalContext.current
-    
-    val currentUser = remember {
-        UserProfile(
-            id = "user_" + System.currentTimeMillis(),
-            name = "Miauberto",
-            username = "@miauberto_official",
-            avatarEmoji = "🕶️😼"
-        )
-    }
 
     var posts by remember { mutableStateOf<List<Post>>(emptyList()) }
     var showNewPostModal by remember { mutableStateOf(false) }
@@ -89,7 +330,6 @@ fun MiaubertoSocialScreen() {
     var fileInputUrl by remember { mutableStateOf("") }
     var fileInputName by remember { mutableStateOf("") }
 
-    // Escucha en tiempo real desde Firestore
     LaunchedEffect(Unit) {
         db.collection("posts")
             .orderBy("createdAt", Query.Direction.DESCENDING)
@@ -120,12 +360,17 @@ fun MiaubertoSocialScreen() {
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("🕶️😼", fontSize = 24.sp)
+                        Text(currentUser.avatarEmoji, fontSize = 24.sp)
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
-                            Text("MIAUBERTO SOCIAL", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                            Text("Videos, Archivos & Estados 🎬📁", color = Color(0xFF38BDF8), fontSize = 11.sp)
+                            Text("MIAUBERTO SOCIAL", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            Text("${currentUser.name} (${currentUser.username})", color = Color(0xFF38BDF8), fontSize = 11.sp)
                         }
+                    }
+                },
+                actions = {
+                    TextButton(onClick = onLogout) {
+                        Text("Salir 🚪", color = Color(0xFFEF4444), fontSize = 12.sp)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1E293B))
@@ -161,7 +406,6 @@ fun MiaubertoSocialScreen() {
                             .border(1.dp, Color(0xFF334155), RoundedCornerShape(12.dp))
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
-                            // Header del autor
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(
                                     modifier = Modifier
@@ -181,12 +425,10 @@ fun MiaubertoSocialScreen() {
 
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            // Texto principal
                             if (post.content.isNotBlank()) {
                                 Text(post.content, color = Color.White, fontSize = 14.sp, lineHeight = 20.sp)
                             }
 
-                            // Sticker Emoji
                             if (!post.mediaEmoji.isNullOrEmpty()) {
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Box(
@@ -201,7 +443,6 @@ fun MiaubertoSocialScreen() {
                                 }
                             }
 
-                            // Enlace / Video Youtube
                             if (!post.linkUrl.isNullOrEmpty()) {
                                 Spacer(modifier = Modifier.height(10.dp))
                                 Surface(
@@ -240,7 +481,6 @@ fun MiaubertoSocialScreen() {
                                 }
                             }
 
-                            // Archivo / Documento adjunto
                             if (!post.fileUrl.isNullOrEmpty()) {
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Surface(
@@ -285,7 +525,6 @@ fun MiaubertoSocialScreen() {
         }
     }
 
-    // Modal para crear nueva publicación
     if (showNewPostModal) {
         AlertDialog(
             onDismissRequest = { showNewPostModal = false },
@@ -295,7 +534,7 @@ fun MiaubertoSocialScreen() {
                     OutlinedTextField(
                         value = newPostContentText,
                         onValueChange = { newPostContentText = it },
-                        label = { Text("¿Qué quieres compartir?") },
+                        label = { Text("¿Qué quieres compartir, ${currentUser.name}?") },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(90.dp),
