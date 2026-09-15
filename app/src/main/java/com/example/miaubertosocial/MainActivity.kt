@@ -46,7 +46,7 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.util.regex.Pattern
 
-// ESTÉTICA MIAUBERTO EVIL DARK
+// ESTÉTICA MIAUBERTO EVIL DARK MODE
 val MiaubertoBg = Color(0xFF101014)
 val MiaubertoCardBg = Color(0xFF1C1C22)
 val MiaubertoRed = Color(0xFFE63946)
@@ -57,11 +57,12 @@ val MiaubertoBorder = Color(0xFF2A2A34)
 val MiaubertoDarkBtn = Color(0xFF262630)
 
 data class UserProfile(
-    val uid: String,
-    val name: String,
-    val username: String,
+    val uid: String = "",
+    val name: String = "",
+    val username: String = "",
     val avatarBase64: String? = null,
-    val isAdmin: Boolean = false
+    val isAdmin: Boolean = false,
+    val isPrivate: Boolean = false
 )
 
 data class Comment(
@@ -74,6 +75,7 @@ data class Comment(
 
 data class Post(
     val id: String,
+    val authorUid: String = "",
     val authorName: String,
     val username: String,
     val avatarBase64: String? = null,
@@ -85,7 +87,6 @@ data class Post(
     val commentsCount: Int = 0
 )
 
-// Convierte Base64 a Bitmap de Compose
 fun decodeBase64ToBitmap(base64Str: String?): Bitmap? {
     if (base64Str.isNullOrEmpty()) return null
     return try {
@@ -97,8 +98,7 @@ fun decodeBase64ToBitmap(base64Str: String?): Bitmap? {
     }
 }
 
-// Convierte Uri a Base64 optimizado para Firestore
-fun uriToBase64(context: Context, uri: Uri, maxSize: Int = 500): String? {
+fun uriToBase64(context: Context, uri: Uri, maxSize: Int = 400): String? {
     return try {
         val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
         val originalBitmap = BitmapFactory.decodeStream(inputStream) ?: return null
@@ -176,6 +176,7 @@ fun AppNavigationScreen() {
                         val username = doc.getString("username") ?: "@admin"
                         val email = (doc.getString("email") ?: user.email ?: "").lowercase()
                         val explicitAdmin = doc.getBoolean("isAdmin") ?: false
+                        val isPrivate = doc.getBoolean("isPrivate") ?: false
                         
                         val isMainAdmin = email.contains("rob") || username.contains("robstark") || name.contains("Robespierre")
                         val isBackupAdmin = email.contains("admin") || email.contains("backup") || email == "admin@miauberto.com"
@@ -186,7 +187,8 @@ fun AppNavigationScreen() {
                             name = name,
                             username = username,
                             avatarBase64 = doc.getString("avatarBase64"),
-                            isAdmin = isAdminUser
+                            isAdmin = isAdminUser,
+                            isPrivate = isPrivate
                         )
                     } else {
                         currentUserProfile = null
@@ -217,7 +219,7 @@ fun AppNavigationScreen() {
             }
         )
     } else {
-        MiaubertoFacebookFeedScreen(
+        MiaubertoMainScreen(
             currentUser = currentUserProfile!!,
             onProfileUpdated = { updatedProfile ->
                 currentUserProfile = updatedProfile
@@ -406,14 +408,16 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                                         name = nameInput.ifBlank { "Robespierre" },
                                         username = formattedUsername.ifBlank { "@admin" },
                                         avatarBase64 = avatarBase64,
-                                        isAdmin = isDefaultAdmin
+                                        isAdmin = isDefaultAdmin,
+                                        isPrivate = false
                                     )
                                     val userMap = hashMapOf(
                                         "name" to profile.name,
                                         "username" to profile.username,
                                         "avatarBase64" to profile.avatarBase64,
                                         "email" to cleanEmail,
-                                        "isAdmin" to isDefaultAdmin
+                                        "isAdmin" to isDefaultAdmin,
+                                        "isPrivate" to false
                                     )
                                     db.collection("users").document(uid).set(userMap)
                                         .addOnSuccessListener {
@@ -436,13 +440,15 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                                             val username = doc.getString("username") ?: "@admin"
                                             val cleanEmail = emailInput.trim().lowercase()
                                             val isAdmin = doc.getBoolean("isAdmin") ?: (cleanEmail.contains("rob") || name.contains("Robespierre") || cleanEmail.contains("admin") || cleanEmail.contains("backup"))
+                                            val isPrivate = doc.getBoolean("isPrivate") ?: false
 
                                             val profile = UserProfile(
                                                 uid = uid,
                                                 name = name,
                                                 username = username,
                                                 avatarBase64 = doc.getString("avatarBase64"),
-                                                isAdmin = isAdmin
+                                                isAdmin = isAdmin,
+                                                isPrivate = isPrivate
                                             )
                                             onProfileCreated(profile)
                                         }
@@ -460,7 +466,7 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                     if (isLoading) {
                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
                     } else {
-                        Text(if (isRegisterMode) "Unirse al Gremio 🐾" else "Ingresar al Guarida 😼", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Text(if (isRegisterMode) "Unirse al Gremio 🐾" else "Ingresar a la Guarida 😼", fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -483,11 +489,14 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MiaubertoFacebookFeedScreen(
+fun MiaubertoMainScreen(
     currentUser: UserProfile,
     onProfileUpdated: (UserProfile) -> Unit,
     onLogout: () -> Unit
 ) {
+    var selectedTab by remember { mutableStateOf(0) }
+    var viewedProfileUid by remember { mutableStateOf<String?>(null) }
+
     val db = remember { FirebaseFirestore.getInstance() }
     val auth = remember { FirebaseAuth.getInstance() }
     val context = LocalContext.current
@@ -504,6 +513,7 @@ fun MiaubertoFacebookFeedScreen(
     var showEditProfileModal by remember { mutableStateOf(false) }
     var editNameInput by remember { mutableStateOf(currentUser.name) }
     var editUsernameInput by remember { mutableStateOf(currentUser.username) }
+    var editIsPrivate by remember { mutableStateOf(currentUser.isPrivate) }
     var secretAdminCodeInput by remember { mutableStateOf("") }
     var editAvatarUri by remember { mutableStateOf<Uri?>(null) }
     var isSavingProfile by remember { mutableStateOf(false) }
@@ -531,6 +541,7 @@ fun MiaubertoFacebookFeedScreen(
                     val dislikesList = doc.get("dislikesList") as? List<String> ?: emptyList()
                     Post(
                         id = doc.id,
+                        authorUid = doc.getString("authorUid") ?: "",
                         authorName = doc.getString("authorName") ?: "Michi Malvado",
                         username = doc.getString("username") ?: "@michi",
                         avatarBase64 = doc.getString("avatarBase64"),
@@ -574,39 +585,75 @@ fun MiaubertoFacebookFeedScreen(
                         Text(
                             "😼 Miauberto Red",
                             color = MiaubertoRed,
-                            fontSize = 22.sp,
+                            fontSize = 20.sp,
                             fontWeight = FontWeight.Black
                         )
                         if (currentUser.isAdmin) {
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Surface(
                                 color = MiaubertoGold,
                                 shape = RoundedCornerShape(6.dp)
                             ) {
                                 Text(
-                                    "👑 LÍDER SUPREMO",
+                                    "👑 LÍDER",
                                     color = Color.Black,
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.Black,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                                 )
                             }
                         }
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showEditProfileModal = true }) {
+                    IconButton(onClick = { 
+                        editNameInput = currentUser.name
+                        editUsernameInput = currentUser.username
+                        editIsPrivate = currentUser.isPrivate
+                        showEditProfileModal = true 
+                    }) {
                         Text("⚙️", fontSize = 18.sp)
                     }
                     TextButton(onClick = onLogout) {
-                        Text("Salir 🚪", color = MiaubertoTextSecondary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("Salir 🚪", color = MiaubertoTextSecondary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MiaubertoCardBg)
             )
         },
+        bottomBar = {
+            NavigationBar(
+                containerColor = MiaubertoCardBg,
+                contentColor = MiaubertoRed
+            ) {
+                NavigationBarItem(
+                    selected = selectedTab == 0 && viewedProfileUid == null,
+                    onClick = {
+                        selectedTab = 0
+                        viewedProfileUid = null
+                    },
+                    icon = { Text("🌐", fontSize = 18.sp) },
+                    label = { Text("Muro General", fontSize = 11.sp, color = if (selectedTab == 0 && viewedProfileUid == null) MiaubertoRed else MiaubertoTextSecondary) }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 1 && viewedProfileUid == null,
+                    onClick = {
+                        selectedTab = 1
+                        viewedProfileUid = null
+                    },
+                    icon = { Text("👤", fontSize = 18.sp) },
+                    label = { Text("Mi Perfil", fontSize = 11.sp, color = if (selectedTab == 1 && viewedProfileUid == null) MiaubertoRed else MiaubertoTextSecondary) }
+                )
+            }
+        },
         containerColor = MiaubertoBg
     ) { innerPadding ->
+        val displayedPosts = when {
+            viewedProfileUid != null -> posts.filter { it.authorUid == viewedProfileUid }
+            selectedTab == 1 -> posts.filter { it.authorUid == currentUser.uid }
+            else -> posts
+        }
+
         LazyColumn(
             contentPadding = PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -614,125 +661,121 @@ fun MiaubertoFacebookFeedScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, MiaubertoBorder, RoundedCornerShape(14.dp))
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (selectedTab == 1 || viewedProfileUid != null) {
+                item {
+                    val targetUid = viewedProfileUid ?: currentUser.uid
+                    val isMyOwn = targetUid == currentUser.uid
+
+                    var targetProfile by remember(targetUid) { mutableStateOf<UserProfile?>(if (isMyOwn) currentUser else null) }
+
+                    LaunchedEffect(targetUid) {
+                        if (!isMyOwn) {
+                            db.collection("users").document(targetUid).get().addOnSuccessListener { d ->
+                                if (d.exists()) {
+                                    targetProfile = UserProfile(
+                                        uid = targetUid,
+                                        name = d.getString("name") ?: "Michi",
+                                        username = d.getString("username") ?: "@michi",
+                                        avatarBase64 = d.getString("avatarBase64"),
+                                        isAdmin = d.getBoolean("isAdmin") ?: false,
+                                        isPrivate = d.getBoolean("isPrivate") ?: false
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    val profileIsPrivate = targetProfile?.isPrivate ?: false
+                    val canViewPrivateContent = isMyOwn || currentUser.isAdmin || !profileIsPrivate
+
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, MiaubertoBorder, RoundedCornerShape(16.dp))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            val profAvatar = decodeBase64ToBitmap(targetProfile?.avatarBase64)
                             Box(
                                 modifier = Modifier
-                                    .size(44.dp)
+                                    .size(80.dp)
                                     .clip(CircleShape)
                                     .background(MiaubertoBg)
-                                    .border(1.dp, MiaubertoRed, CircleShape),
+                                    .border(2.dp, MiaubertoRed, CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
-                                val userAvatarBitmap = decodeBase64ToBitmap(currentUser.avatarBase64)
-                                if (userAvatarBitmap != null) {
+                                if (profAvatar != null) {
                                     Image(
-                                        bitmap = userAvatarBitmap.asImageBitmap(),
-                                        contentDescription = "Avatar",
+                                        bitmap = profAvatar.asImageBitmap(),
+                                        contentDescription = "Avatar Perfil",
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop
                                     )
                                 } else {
-                                    Text("😼", fontSize = 22.sp)
+                                    Text("😼", fontSize = 40.sp)
                                 }
                             }
 
-                            Spacer(modifier = Modifier.width(10.dp))
-
-                            OutlinedTextField(
-                                value = newPostContentText,
-                                onValueChange = { newPostContentText = it },
-                                placeholder = { Text("¿Qué plan malvado trama hoy, ${currentUser.name.split(" ")[0]}?", color = MiaubertoTextSecondary, fontSize = 13.sp) },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .heightIn(min = 50.dp, max = 110.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = MiaubertoTextPrimary,
-                                    unfocusedTextColor = MiaubertoTextPrimary,
-                                    unfocusedBorderColor = MiaubertoBorder,
-                                    focusedBorderColor = MiaubertoRed,
-                                    unfocusedContainerColor = MiaubertoBg,
-                                    focusedContainerColor = MiaubertoBg
-                                )
-                            )
-                        }
-
-                        if (selectedPostImageUri != null) {
                             Spacer(modifier = Modifier.height(10.dp))
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(180.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                            ) {
-                                AsyncImage(
-                                    model = selectedPostImageUri,
-                                    contentDescription = "Imagen seleccionada",
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = targetProfile?.name ?: "Cargando...",
+                                    color = MiaubertoTextPrimary,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold
                                 )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Divider(color = MiaubertoBorder, thickness = 0.8.dp)
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            TextButton(onClick = { postImagePickerLauncher.launch("image/*") }) {
-                                Text("🖼️ Agregar Imagen", color = MiaubertoTextSecondary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                if (profileIsPrivate) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("🔒", fontSize = 16.sp)
+                                }
                             }
 
-                            Button(
-                                onClick = {
-                                    if ((newPostContentText.isNotBlank() || selectedPostImageUri != null) && !isPosting) {
-                                        isPosting = true
+                            Text(
+                                text = targetProfile?.username ?: "",
+                                color = MiaubertoTextSecondary,
+                                fontSize = 13.sp
+                            )
 
-                                        val imageBase64 = if (selectedPostImageUri != null) uriToBase64(context, selectedPostImageUri!!, 400) else null
+                            Spacer(modifier = Modifier.height(10.dp))
 
-                                        val newPostMap = hashMapOf(
-                                            "authorName" to currentUser.name,
-                                            "username" to currentUser.username,
-                                            "avatarBase64" to currentUser.avatarBase64,
-                                            "content" to newPostContentText,
-                                            "postImageBase64" to imageBase64,
-                                            "likesList" to emptyList<String>(),
-                                            "dislikesList" to emptyList<String>(),
-                                            "commentsCount" to 0,
-                                            "createdAt" to System.currentTimeMillis()
-                                        )
-                                        db.collection("posts").add(newPostMap)
-                                            .addOnSuccessListener {
-                                                newPostContentText = ""
-                                                selectedPostImageUri = null
-                                                isPosting = false
-                                            }
-                                            .addOnFailureListener {
-                                                isPosting = false
-                                            }
+                            if (canViewPrivateContent) {
+                                Surface(
+                                    color = MiaubertoDarkBtn,
+                                    shape = RoundedCornerShape(20.dp)
+                                ) {
+                                    Text(
+                                        text = "📝 ${displayedPosts.size} Publicaciones en su Muro",
+                                        color = MiaubertoRed,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    )
+                                }
+                            } else {
+                                Surface(
+                                    color = Color(0xFF374151),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier.padding(14.dp)
+                                    ) {
+                                        Text("🔒 Perfil Privado", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text("Este michi ha configurado su perfil como privado.", color = MiaubertoTextSecondary, fontSize = 12.sp)
                                     }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = MiaubertoRed),
-                                shape = RoundedCornerShape(8.dp),
-                                enabled = !isPosting && (newPostContentText.isNotBlank() || selectedPostImageUri != null)
-                            ) {
-                                if (isPosting) {
-                                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp))
-                                } else {
-                                    Text("Publicar 😼", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                }
+                            }
+
+                            if (viewedProfileUid != null) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                TextButton(onClick = { viewedProfileUid = null }) {
+                                    Text("⬅️ Volver al Muro General", color = MiaubertoTextSecondary, fontSize = 12.sp)
                                 }
                             }
                         }
@@ -740,243 +783,401 @@ fun MiaubertoFacebookFeedScreen(
                 }
             }
 
-            items(posts) { post ->
-                val detectedYoutubeUrl = extractYoutubeUrl(post.content)
-                val userHasLiked = post.likesList.contains(currentUser.uid)
-                val userHasDisliked = post.dislikesList.contains(currentUser.uid)
-                val postImageBitmap = decodeBase64ToBitmap(post.postImageBase64)
-                val authorAvatarBitmap = decodeBase64ToBitmap(post.avatarBase64)
+            if (viewedProfileUid == null) {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, MiaubertoBorder, RoundedCornerShape(14.dp))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(MiaubertoBg)
+                                        .border(1.dp, MiaubertoRed, CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    val userAvatarBitmap = decodeBase64ToBitmap(currentUser.avatarBase64)
+                                    if (userAvatarBitmap != null) {
+                                        Image(
+                                            bitmap = userAvatarBitmap.asImageBitmap(),
+                                            contentDescription = "Avatar",
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    } else {
+                                        Text("😼", fontSize = 22.sp)
+                                    }
+                                }
 
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, MiaubertoBorder, RoundedCornerShape(14.dp))
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .clip(CircleShape)
-                                    .background(MiaubertoBg)
-                                    .border(1.dp, MiaubertoRed, CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (authorAvatarBitmap != null) {
-                                    Image(
-                                        bitmap = authorAvatarBitmap.asImageBitmap(),
-                                        contentDescription = "Avatar",
+                                Spacer(modifier = Modifier.width(10.dp))
+
+                                OutlinedTextField(
+                                    value = newPostContentText,
+                                    onValueChange = { newPostContentText = it },
+                                    placeholder = { Text("¿Qué plan malvado trama hoy, ${currentUser.name.split(" ")[0]}?", color = MiaubertoTextSecondary, fontSize = 13.sp) },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 50.dp, max = 110.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = MiaubertoTextPrimary,
+                                        unfocusedTextColor = MiaubertoTextPrimary,
+                                        unfocusedBorderColor = MiaubertoBorder,
+                                        focusedBorderColor = MiaubertoRed,
+                                        unfocusedContainerColor = MiaubertoBg,
+                                        focusedContainerColor = MiaubertoBg
+                                    )
+                                )
+                            }
+
+                            if (selectedPostImageUri != null) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(180.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                ) {
+                                    AsyncImage(
+                                        model = selectedPostImageUri,
+                                        contentDescription = "Imagen seleccionada",
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop
                                     )
-                                } else {
-                                    Text("😼", fontSize = 20.sp)
                                 }
                             }
 
-                            Spacer(modifier = Modifier.width(10.dp))
-
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = post.authorName,
-                                    color = MiaubertoTextPrimary,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "${post.username} • ${post.timestamp} 🐾",
-                                    color = MiaubertoTextSecondary,
-                                    fontSize = 12.sp
-                                )
-                            }
-
-                            if (currentUser.isAdmin) {
-                                IconButton(onClick = {
-                                    db.collection("posts").document(post.id).delete()
-                                }) {
-                                    Text("🗑️", fontSize = 18.sp)
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        if (post.content.isNotBlank()) {
-                            Text(
-                                text = post.content,
-                                color = MiaubertoTextPrimary,
-                                fontSize = 14.sp,
-                                lineHeight = 20.sp
-                            )
-                        }
-
-                        if (detectedYoutubeUrl != null) {
                             Spacer(modifier = Modifier.height(10.dp))
-                            val embedUrl = getEmbedYoutubeUrl(detectedYoutubeUrl)
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(210.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color.Black)
+                            Divider(color = MiaubertoBorder, thickness = 0.8.dp)
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                AndroidView(
-                                    factory = { ctx ->
-                                        WebView(ctx).apply {
-                                            settings.javaScriptEnabled = true
-                                            settings.domStorageEnabled = true
-                                            webChromeClient = WebChromeClient()
-                                            webViewClient = WebViewClient()
-                                            loadUrl(embedUrl)
+                                TextButton(onClick = { postImagePickerLauncher.launch("image/*") }) {
+                                    Text("🖼️ Imagen", color = MiaubertoTextSecondary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                }
+
+                                Button(
+                                    onClick = {
+                                        if ((newPostContentText.isNotBlank() || selectedPostImageUri != null) && !isPosting) {
+                                            isPosting = true
+
+                                            val imageBase64 = if (selectedPostImageUri != null) uriToBase64(context, selectedPostImageUri!!, 400) else null
+
+                                            val newPostMap = hashMapOf(
+                                                "authorUid" to currentUser.uid,
+                                                "authorName" to currentUser.name,
+                                                "username" to currentUser.username,
+                                                "avatarBase64" to currentUser.avatarBase64,
+                                                "content" to newPostContentText,
+                                                "postImageBase64" to imageBase64,
+                                                "likesList" to emptyList<String>(),
+                                                "dislikesList" to emptyList<String>(),
+                                                "commentsCount" to 0,
+                                                "createdAt" to System.currentTimeMillis()
+                                            )
+                                            db.collection("posts").add(newPostMap)
+                                                .addOnSuccessListener {
+                                                    newPostContentText = ""
+                                                    selectedPostImageUri = null
+                                                    isPosting = false
+                                                }
+                                                .addOnFailureListener {
+                                                    isPosting = false
+                                                }
                                         }
                                     },
-                                    modifier = Modifier.fillMaxSize()
+                                    colors = ButtonDefaults.buttonColors(containerColor = MiaubertoRed),
+                                    shape = RoundedCornerShape(8.dp),
+                                    enabled = !isPosting && (newPostContentText.isNotBlank() || selectedPostImageUri != null)
+                                ) {
+                                    if (isPosting) {
+                                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp))
+                                    } else {
+                                        Text("Publicar 😼", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            val targetUid = viewedProfileUid ?: if (selectedTab == 1) currentUser.uid else null
+            var targetIsPrivate by remember(targetUid) { mutableStateOf(false) }
+
+            if (targetUid != null && targetUid != currentUser.uid) {
+                LaunchedEffect(targetUid) {
+                    db.collection("users").document(targetUid).get().addOnSuccessListener { d ->
+                        targetIsPrivate = d.getBoolean("isPrivate") ?: false
+                    }
+                }
+            } else {
+                targetIsPrivate = false
+            }
+
+            val isAllowedToSeePosts = targetUid == null || targetUid == currentUser.uid || currentUser.isAdmin || !targetIsPrivate
+
+            if (isAllowedToSeePosts) {
+                items(displayedPosts) { post ->
+                    val detectedYoutubeUrl = extractYoutubeUrl(post.content)
+                    val userHasLiked = post.likesList.contains(currentUser.uid)
+                    val userHasDisliked = post.dislikesList.contains(currentUser.uid)
+                    val postImageBitmap = decodeBase64ToBitmap(post.postImageBase64)
+                    val authorAvatarBitmap = decodeBase64ToBitmap(post.avatarBase64)
+
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, MiaubertoBorder, RoundedCornerShape(14.dp))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .clip(CircleShape)
+                                        .background(MiaubertoBg)
+                                        .border(1.dp, MiaubertoRed, CircleShape)
+                                        .clickable {
+                                            if (post.authorUid.isNotBlank()) {
+                                                viewedProfileUid = post.authorUid
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (authorAvatarBitmap != null) {
+                                        Image(
+                                            bitmap = authorAvatarBitmap.asImageBitmap(),
+                                            contentDescription = "Avatar",
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    } else {
+                                        Text("😼", fontSize = 20.sp)
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(10.dp))
+
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            if (post.authorUid.isNotBlank()) {
+                                                viewedProfileUid = post.authorUid
+                                            }
+                                        }
+                                ) {
+                                    Text(
+                                        text = post.authorName,
+                                        color = MiaubertoTextPrimary,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "${post.username} • ${post.timestamp} 🐾",
+                                        color = MiaubertoTextSecondary,
+                                        fontSize = 12.sp
+                                    )
+                                }
+
+                                if (currentUser.isAdmin) {
+                                    IconButton(onClick = {
+                                        db.collection("posts").document(post.id).delete()
+                                    }) {
+                                        Text("🗑️", fontSize = 18.sp)
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            if (post.content.isNotBlank()) {
+                                Text(
+                                    text = post.content,
+                                    color = MiaubertoTextPrimary,
+                                    fontSize = 14.sp,
+                                    lineHeight = 20.sp
                                 )
                             }
-                        }
 
-                        // DECODIFICACIÓN Y DESPLIEGUE DIRECTO DE LA IMAGEN ADJUNTADA
-                        if (postImageBitmap != null) {
+                            if (detectedYoutubeUrl != null) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                val embedUrl = getEmbedYoutubeUrl(detectedYoutubeUrl)
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(210.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color.Black)
+                                ) {
+                                    AndroidView(
+                                        factory = { ctx ->
+                                            WebView(ctx).apply {
+                                                settings.javaScriptEnabled = true
+                                                settings.domStorageEnabled = true
+                                                webChromeClient = WebChromeClient()
+                                                webViewClient = WebViewClient()
+                                                loadUrl(embedUrl)
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                            }
+
+                            if (postImageBitmap != null) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Image(
+                                    bitmap = postImageBitmap.asImageBitmap(),
+                                    contentDescription = "Imagen de publicación",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 350.dp)
+                                        .clip(RoundedCornerShape(10.dp)),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
+
                             Spacer(modifier = Modifier.height(10.dp))
-                            Image(
-                                bitmap = postImageBitmap.asImageBitmap(),
-                                contentDescription = "Imagen de publicación",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 350.dp)
-                                    .clip(RoundedCornerShape(10.dp)),
-                                contentScale = ContentScale.Crop
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "😼 ${post.likesList.size} Aprueban  •  😾 ${post.dislikesList.size} Reprueban",
-                                color = MiaubertoTextSecondary,
-                                fontSize = 11.sp
-                            )
-                            Text(
-                                text = "💬 ${post.commentsCount} Murmullos",
-                                color = MiaubertoTextSecondary,
-                                fontSize = 11.sp
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Divider(color = MiaubertoBorder, thickness = 0.8.dp)
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Surface(
-                                color = if (userHasLiked) MiaubertoRed.copy(alpha = 0.2f) else MiaubertoDarkBtn,
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable {
-                                        val postRef = db.collection("posts").document(post.id)
-                                        if (userHasLiked) {
-                                            postRef.update("likesList", FieldValue.arrayRemove(currentUser.uid))
-                                        } else {
-                                            postRef.update(
-                                                "likesList", FieldValue.arrayUnion(currentUser.uid),
-                                                "dislikesList", FieldValue.arrayRemove(currentUser.uid)
-                                            )
-                                        }
-                                    }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(vertical = 8.dp)
-                                ) {
-                                    Text(
-                                        text = "🐾 Aprobar",
-                                        color = if (userHasLiked) MiaubertoRed else MiaubertoTextSecondary,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
+                                Text(
+                                    text = "😼 ${post.likesList.size} Aprueban  •  😾 ${post.dislikesList.size} Reprueban",
+                                    color = MiaubertoTextSecondary,
+                                    fontSize = 11.sp
+                                )
+                                Text(
+                                    text = "💬 ${post.commentsCount} Murmullos",
+                                    color = MiaubertoTextSecondary,
+                                    fontSize = 11.sp
+                                )
                             }
 
-                            Surface(
-                                color = if (userHasDisliked) Color(0xFF7F1D1D) else MiaubertoDarkBtn,
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable {
-                                        val postRef = db.collection("posts").document(post.id)
-                                        if (userHasDisliked) {
-                                            postRef.update("dislikesList", FieldValue.arrayRemove(currentUser.uid))
-                                        } else {
-                                            postRef.update(
-                                                "dislikesList", FieldValue.arrayUnion(currentUser.uid),
-                                                "likesList", FieldValue.arrayRemove(currentUser.uid)
-                                            )
-                                        }
-                                    }
-                            ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(vertical = 8.dp)
-                                ) {
-                                    Text(
-                                        text = "😾 Gruñir",
-                                        color = if (userHasDisliked) Color(0xFFEF4444) else MiaubertoTextSecondary,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Divider(color = MiaubertoBorder, thickness = 0.8.dp)
+                            Spacer(modifier = Modifier.height(6.dp))
 
-                            Surface(
-                                color = MiaubertoDarkBtn,
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { activeCommentPostId = post.id }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(vertical = 8.dp)
-                                ) {
-                                    Text("💬 Opinar", color = MiaubertoTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-
-                            Surface(
-                                color = MiaubertoDarkBtn,
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable {
-                                        val shareIntent = Intent().apply {
-                                            action = Intent.ACTION_SEND
-                                            putExtra(Intent.EXTRA_TEXT, "Comunicado oficial de ${post.authorName} en Miauberto Red:\n\n\"${post.content}\"")
-                                            type = "text/plain"
+                                Surface(
+                                    color = if (userHasLiked) MiaubertoRed.copy(alpha = 0.2f) else MiaubertoDarkBtn,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            val postRef = db.collection("posts").document(post.id)
+                                            if (userHasLiked) {
+                                                postRef.update("likesList", FieldValue.arrayRemove(currentUser.uid))
+                                            } else {
+                                                postRef.update(
+                                                    "likesList", FieldValue.arrayUnion(currentUser.uid),
+                                                    "dislikesList", FieldValue.arrayRemove(currentUser.uid)
+                                                )
+                                            }
                                         }
-                                        context.startActivity(Intent.createChooser(shareIntent, "Difundir comunicado"))
-                                    }
-                            ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(vertical = 8.dp)
                                 ) {
-                                    Text("↗️ Difundir", color = MiaubertoTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Row(
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = "🐾 Aprobar",
+                                            color = if (userHasLiked) MiaubertoRed else MiaubertoTextSecondary,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    color = if (userHasDisliked) Color(0xFF7F1D1D) else MiaubertoDarkBtn,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            val postRef = db.collection("posts").document(post.id)
+                                            if (userHasDisliked) {
+                                                postRef.update("dislikesList", FieldValue.arrayRemove(currentUser.uid))
+                                            } else {
+                                                postRef.update(
+                                                    "dislikesList", FieldValue.arrayUnion(currentUser.uid),
+                                                    "likesList", FieldValue.arrayRemove(currentUser.uid)
+                                                )
+                                            }
+                                        }
+                                ) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = "😾 Gruñir",
+                                            color = if (userHasDisliked) Color(0xFFEF4444) else MiaubertoTextSecondary,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    color = MiaubertoDarkBtn,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { activeCommentPostId = post.id }
+                                ) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    ) {
+                                        Text("💬 Opinar", color = MiaubertoTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                Surface(
+                                    color = MiaubertoDarkBtn,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            val shareIntent = Intent().apply {
+                                                action = Intent.ACTION_SEND
+                                                putExtra(Intent.EXTRA_TEXT, "Comunicado oficial de ${post.authorName} en Miauberto Red:\n\n\"${post.content}\"")
+                                                type = "text/plain"
+                                            }
+                                            context.startActivity(Intent.createChooser(shareIntent, "Difundir comunicado"))
+                                        }
+                                ) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    ) {
+                                        Text("↗️ Difundir", color = MiaubertoTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }
@@ -1154,6 +1355,32 @@ fun MiaubertoFacebookFeedScreen(
                         )
                     )
 
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // SWITCH DE PERFIL PRIVADO
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MiaubertoBg, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("Perfil Privado 🔒", color = MiaubertoTextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("Oculta tus publicaciones en tu muro", color = MiaubertoTextSecondary, fontSize = 11.sp)
+                        }
+                        Switch(
+                            checked = editIsPrivate,
+                            onCheckedChange = { editIsPrivate = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = MiaubertoRed,
+                                unfocusedTrackColor = MiaubertoBorder
+                            )
+                        )
+                    }
+
                     if (!currentUser.isAdmin) {
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedTextField(
@@ -1209,7 +1436,8 @@ fun MiaubertoFacebookFeedScreen(
                                 "name" to editNameInput,
                                 "username" to editUsernameInput,
                                 "avatarBase64" to newAvatarBase64,
-                                "isAdmin" to promoteToAdmin
+                                "isAdmin" to promoteToAdmin,
+                                "isPrivate" to editIsPrivate
                             )
 
                             db.collection("users").document(currentUser.uid).update(updatedMap)
@@ -1219,7 +1447,8 @@ fun MiaubertoFacebookFeedScreen(
                                         name = editNameInput,
                                         username = editUsernameInput,
                                         avatarBase64 = newAvatarBase64,
-                                        isAdmin = promoteToAdmin
+                                        isAdmin = promoteToAdmin,
+                                        isPrivate = editIsPrivate
                                     )
                                     onProfileUpdated(updatedProfile)
                                     isSavingProfile = false
