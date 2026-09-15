@@ -44,7 +44,7 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.util.regex.Pattern
 
-// Estilo Facebook
+// Estilo MichiSocial
 val FbBlue = Color(0xFF1877F2)
 val FbBg = Color(0xFFF0F2F5)
 val FbCardBg = Color(0xFFFFFFFF)
@@ -254,7 +254,7 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "facebook",
+                    text = "MichiSocial",
                     color = FbBlue,
                     fontSize = 32.sp,
                     fontWeight = FontWeight.Bold
@@ -424,7 +424,7 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                     errorMessage = ""
                 }) {
                     Text(
-                        if (isRegisterMode) "¿Ya tienes cuenta? Inicia Sesión" else "Crear cuenta de Facebook",
+                        if (isRegisterMode) "¿Ya tienes cuenta? Inicia Sesión" else "Crear cuenta de MichiSocial",
                         color = FbBlue,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -450,7 +450,6 @@ fun MiaubertoFacebookFeedScreen(
     var selectedPostImageUri by remember { mutableStateOf<Uri?>(null) }
     var isPosting by remember { mutableStateOf(false) }
 
-    // Estado Modal Comentarios
     var activeCommentPostId by remember { mutableStateOf<String?>(null) }
     var commentsList by remember { mutableStateOf<List<Comment>>(emptyList()) }
     var commentInputText by remember { mutableStateOf("") }
@@ -474,7 +473,6 @@ fun MiaubertoFacebookFeedScreen(
         editAvatarUri = uri
     }
 
-    // Escuchar publicaciones en vivo
     LaunchedEffect(Unit) {
         db.collection("posts")
             .orderBy("createdAt", Query.Direction.DESCENDING)
@@ -501,7 +499,6 @@ fun MiaubertoFacebookFeedScreen(
             }
     }
 
-    // Escuchar comentarios del post activo
     LaunchedEffect(activeCommentPostId) {
         if (activeCommentPostId != null) {
             db.collection("posts").document(activeCommentPostId!!).collection("comments")
@@ -528,7 +525,7 @@ fun MiaubertoFacebookFeedScreen(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "facebook",
+                            "MichiSocial",
                             color = FbBlue,
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Bold
@@ -795,7 +792,6 @@ fun MiaubertoFacebookFeedScreen(
                             )
                         }
 
-                        // Resumen de Me gusta / No me gusta / Comentarios
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -817,7 +813,6 @@ fun MiaubertoFacebookFeedScreen(
                         Divider(color = FbDivider, thickness = 0.5.dp)
                         Spacer(modifier = Modifier.height(4.dp))
 
-                        // BOTONES INTERACTIVOS (LIKE, DISLIKE, COMENTAR, COMPARTIR)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceAround
@@ -834,7 +829,7 @@ fun MiaubertoFacebookFeedScreen(
                                 }
                             }) {
                                 Text(
-                                    text = if (userHasLiked) "👍 Me gusta" else "👍 Me gusta",
+                                    text = "👍 Me gusta",
                                     color = if (userHasLiked) FbBlue else FbTextSecondary,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold
@@ -867,7 +862,7 @@ fun MiaubertoFacebookFeedScreen(
                             TextButton(onClick = {
                                 val shareIntent = Intent().apply {
                                     action = Intent.ACTION_SEND
-                                    putExtra(Intent.EXTRA_TEXT, "Mira esta publicación de ${post.authorName} en Miauberto Social:\n\n\"${post.content}\"")
+                                    putExtra(Intent.EXTRA_TEXT, "Mira esta publicación de ${post.authorName} en MichiSocial:\n\n\"${post.content}\"")
                                     type = "text/plain"
                                 }
                                 context.startActivity(Intent.createChooser(shareIntent, "Compartir publicación"))
@@ -881,7 +876,6 @@ fun MiaubertoFacebookFeedScreen(
         }
     }
 
-    // MODAL SECCIÓN DE COMENTARIOS
     if (activeCommentPostId != null) {
         AlertDialog(
             onDismissRequest = { activeCommentPostId = null },
