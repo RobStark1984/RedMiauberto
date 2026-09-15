@@ -106,7 +106,7 @@ fun AppNavigationScreen() {
     var currentUserProfile by remember { mutableStateOf<UserProfile?>(null) }
     var isLoadingProfile by remember { mutableStateOf(true) }
 
-    LaunchedEffect(Unit) {
+    fun refreshProfile() {
         val user = auth.currentUser
         if (user != null) {
             db.collection("users").document(user.uid).get()
@@ -118,6 +118,8 @@ fun AppNavigationScreen() {
                             username = doc.getString("username") ?: "@michi",
                             avatarBase64 = doc.getString("avatarBase64")
                         )
+                    } else {
+                        currentUserProfile = null
                     }
                     isLoadingProfile = false
                 }
@@ -125,8 +127,13 @@ fun AppNavigationScreen() {
                     isLoadingProfile = false
                 }
         } else {
+            currentUserProfile = null
             isLoadingProfile = false
         }
+    }
+
+    LaunchedEffect(Unit) {
+        refreshProfile()
     }
 
     if (isLoadingProfile) {
@@ -142,6 +149,9 @@ fun AppNavigationScreen() {
     } else {
         MiaubertoFacebookFeedScreen(
             currentUser = currentUserProfile!!,
+            onProfileUpdated = { updatedProfile ->
+                currentUserProfile = updatedProfile
+            },
             onLogout = {
                 auth.signOut()
                 currentUserProfile = null
@@ -362,8 +372,13 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MiaubertoFacebookFeedScreen(currentUser: UserProfile, onLogout: () -> Unit) {
+fun MiaubertoFacebookFeedScreen(
+    currentUser: UserProfile,
+    onProfileUpdated: (UserProfile) -> Unit,
+    onLogout: () -> Unit
+) {
     val db = remember { FirebaseFirestore.getInstance() }
+    val auth = remember { FirebaseAuth.getInstance() }
     val context = LocalContext.current
 
     var posts by remember { mutableStateOf<List<Post>>(emptyList()) }
@@ -371,10 +386,23 @@ fun MiaubertoFacebookFeedScreen(currentUser: UserProfile, onLogout: () -> Unit) 
     var selectedPostImageUri by remember { mutableStateOf<Uri?>(null) }
     var isPosting by remember { mutableStateOf(false) }
 
+    // Estado del Modal de Edición de Usuario
+    var showEditProfileModal by remember { mutableStateOf(false) }
+    var editNameInput by remember { mutableStateOf(currentUser.name) }
+    var editUsernameInput by remember { mutableStateOf(currentUser.username) }
+    var editAvatarUri by remember { mutableStateOf<Uri?>(null) }
+    var isSavingProfile by remember { mutableStateOf(false) }
+
     val postImagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         selectedPostImageUri = uri
+    }
+
+    val editAvatarPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        editAvatarUri = uri
     }
 
     LaunchedEffect(Unit) {
@@ -411,6 +439,9 @@ fun MiaubertoFacebookFeedScreen(currentUser: UserProfile, onLogout: () -> Unit) 
                     )
                 },
                 actions = {
+                    IconButton(onClick = { showEditProfileModal = true }) {
+                        Text("⚙️", fontSize = 20.sp)
+                    }
                     TextButton(onClick = onLogout) {
                         Text("Salir", color = FbTextSecondary, fontWeight = FontWeight.Bold)
                     }
@@ -638,5 +669,137 @@ fun MiaubertoFacebookFeedScreen(currentUser: UserProfile, onLogout: () -> Unit) 
                 }
             }
         }
+    }
+
+    // MODAL EDITAR / ELIMINAR USUARIO
+    if (showEditProfileModal) {
+        AlertDialog(
+            onDismissRequest = { showEditProfileModal = false },
+            title = { Text("Configuración de Perfil ⚙️", fontWeight = FontWeight.Bold, color = FbTextPrimary) },
+            text = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(70.dp)
+                            .clip(CircleShape)
+                            .background(FbBg)
+                            .border(2.dp, FbBlue, CircleShape)
+                            .clickable { editAvatarPickerLauncher.launch("image/*") },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (editAvatarUri != null) {
+                            AsyncImage(
+                                model = editAvatarUri,
+                                contentDescription = "Nuevo avatar",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else if (!currentUser.avatarBase64.isNullOrEmpty()) {
+                            AsyncImage(
+                                model = currentUser.avatarBase64,
+                                contentDescription = "Avatar actual",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Text("📷 Cambiar", color = FbBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = editNameInput,
+                        onValueChange = { editNameInput = it },
+                        label = { Text("Nombre y Apellido") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = editUsernameInput,
+                        onValueChange = { editUsernameInput = it },
+                        label = { Text("Nombre de usuario (@michi)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Botón Eliminar Usuario
+                    Button(
+                        onClick = {
+                            isSavingProfile = true
+                            db.collection("users").document(currentUser.uid).delete()
+                                .addOnSuccessListener {
+                                    auth.currentUser?.delete()
+                                    isSavingProfile = false
+                                    showEditProfileModal = false
+                                    onLogout()
+                                }
+                                .addOnFailureListener {
+                                    isSavingProfile = false
+                                }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text("🗑️ Eliminar mi Usuario / Cuenta", color = Color.White, fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (editNameInput.isNotBlank() && !isSavingProfile) {
+                            isSavingProfile = true
+                            val newAvatarBase64 = if (editAvatarUri != null) uriToBase64(context, editAvatarUri!!, 200) else currentUser.avatarBase64
+
+                            val updatedMap = hashMapOf<String, Any?>(
+                                "name" to editNameInput,
+                                "username" to editUsernameInput,
+                                "avatarBase64" to newAvatarBase64
+                            )
+
+                            db.collection("users").document(currentUser.uid).update(updatedMap)
+                                .addOnSuccessListener {
+                                    val updatedProfile = UserProfile(
+                                        uid = currentUser.uid,
+                                        name = editNameInput,
+                                        username = editUsernameInput,
+                                        avatarBase64 = newAvatarBase64
+                                    )
+                                    onProfileUpdated(updatedProfile)
+                                    isSavingProfile = false
+                                    showEditProfileModal = false
+                                }
+                                .addOnFailureListener {
+                                    isSavingProfile = false
+                                }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = FbBlue),
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    if (isSavingProfile) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp))
+                    } else {
+                        Text("Guardar Cambios", color = Color.White)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditProfileModal = false }) {
+                    Text("Cancelar", color = FbTextSecondary)
+                }
+            },
+            containerColor = FbCardBg
+        )
     }
 }
