@@ -60,9 +60,8 @@ dependencies {
     // Carga de imágenes (Coil Compose)
     implementation 'io.coil-kt:coil-compose:2.5.0'
 
-    // Firebase BoM, Firestore, Auth & Storage
+    // Firebase BoM, Firestore & Auth
     implementation platform('com.google.firebase:firebase-bom:32.7.0')
     implementation 'com.google.firebase:firebase-firestore-ktx'
     implementation 'com.google.firebase:firebase-auth-ktx'
-    implementation 'com.google.firebase:firebase-storage-ktx'
 }
