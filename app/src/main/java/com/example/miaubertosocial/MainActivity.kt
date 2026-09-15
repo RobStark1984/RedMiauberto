@@ -49,7 +49,8 @@ data class UserProfile(
     val uid: String,
     val name: String,
     val username: String,
-    val avatarBase64: String? = null
+    val avatarBase64: String? = null,
+    val isAdmin: Boolean = false
 )
 
 data class Post(
@@ -112,11 +113,22 @@ fun AppNavigationScreen() {
             db.collection("users").document(user.uid).get()
                 .addOnSuccessListener { doc ->
                     if (doc.exists()) {
+                        val name = doc.getString("name") ?: "Robespierre"
+                        val username = doc.getString("username") ?: "@admin"
+                        val email = (doc.getString("email") ?: user.email ?: "").lowercase()
+                        val explicitAdmin = doc.getBoolean("isAdmin") ?: false
+                        
+                        // Lógica de Administrador Principal + Backup Admin
+                        val isMainAdmin = email.contains("rob") || username.contains("robstark") || name.contains("Robespierre")
+                        val isBackupAdmin = email.contains("admin") || email.contains("backup") || email == "admin@miauberto.com"
+                        val isAdminUser = explicitAdmin || isMainAdmin || isBackupAdmin
+
                         currentUserProfile = UserProfile(
                             uid = user.uid,
-                            name = doc.getString("name") ?: "Michi Amigo",
-                            username = doc.getString("username") ?: "@michi",
-                            avatarBase64 = doc.getString("avatarBase64")
+                            name = name,
+                            username = username,
+                            avatarBase64 = doc.getString("avatarBase64"),
+                            isAdmin = isAdminUser
                         )
                     } else {
                         currentUserProfile = null
@@ -291,22 +303,27 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
 
                         if (isRegisterMode) {
                             val formattedUsername = if (usernameInput.startsWith("@")) usernameInput else "@$usernameInput"
-                            auth.createUserWithEmailAndPassword(emailInput.trim(), passwordInput.trim())
+                            val cleanEmail = emailInput.trim().lowercase()
+                            val isDefaultAdmin = cleanEmail.contains("rob") || nameInput.contains("Robespierre") || cleanEmail.contains("admin") || cleanEmail.contains("backup")
+                            
+                            auth.createUserWithEmailAndPassword(cleanEmail, passwordInput.trim())
                                 .addOnSuccessListener { result ->
                                     val uid = result.user?.uid ?: ""
                                     val avatarBase64 = if (selectedAvatarUri != null) uriToBase64(context, selectedAvatarUri!!, 200) else null
 
                                     val profile = UserProfile(
                                         uid = uid,
-                                        name = nameInput.ifBlank { "Michi Amigo" },
-                                        username = formattedUsername.ifBlank { "@michi" },
-                                        avatarBase64 = avatarBase64
+                                        name = nameInput.ifBlank { "Robespierre" },
+                                        username = formattedUsername.ifBlank { "@admin" },
+                                        avatarBase64 = avatarBase64,
+                                        isAdmin = isDefaultAdmin
                                     )
                                     val userMap = hashMapOf(
                                         "name" to profile.name,
                                         "username" to profile.username,
                                         "avatarBase64" to profile.avatarBase64,
-                                        "email" to emailInput.trim()
+                                        "email" to cleanEmail,
+                                        "isAdmin" to isDefaultAdmin
                                     )
                                     db.collection("users").document(uid).set(userMap)
                                         .addOnSuccessListener {
@@ -325,11 +342,17 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                                     db.collection("users").document(uid).get()
                                         .addOnSuccessListener { doc ->
                                             isLoading = false
+                                            val name = doc.getString("name") ?: "Robespierre"
+                                            val username = doc.getString("username") ?: "@admin"
+                                            val cleanEmail = emailInput.trim().lowercase()
+                                            val isAdmin = doc.getBoolean("isAdmin") ?: (cleanEmail.contains("rob") || name.contains("Robespierre") || cleanEmail.contains("admin") || cleanEmail.contains("backup"))
+
                                             val profile = UserProfile(
                                                 uid = uid,
-                                                name = doc.getString("name") ?: "Michi",
-                                                username = doc.getString("username") ?: "@michi",
-                                                avatarBase64 = doc.getString("avatarBase64")
+                                                name = name,
+                                                username = username,
+                                                avatarBase64 = doc.getString("avatarBase64"),
+                                                isAdmin = isAdmin
                                             )
                                             onProfileCreated(profile)
                                         }
@@ -386,10 +409,10 @@ fun MiaubertoFacebookFeedScreen(
     var selectedPostImageUri by remember { mutableStateOf<Uri?>(null) }
     var isPosting by remember { mutableStateOf(false) }
 
-    // Estado del Modal de Edición de Usuario
     var showEditProfileModal by remember { mutableStateOf(false) }
     var editNameInput by remember { mutableStateOf(currentUser.name) }
     var editUsernameInput by remember { mutableStateOf(currentUser.username) }
+    var secretAdminCodeInput by remember { mutableStateOf("") }
     var editAvatarUri by remember { mutableStateOf<Uri?>(null) }
     var isSavingProfile by remember { mutableStateOf(false) }
 
@@ -431,12 +454,23 @@ fun MiaubertoFacebookFeedScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        "facebook",
-                        color = FbBlue,
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "facebook",
+                            color = FbBlue,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (currentUser.isAdmin) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                color = Color(0xFFF59E0B),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text("👑 ADMIN", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
+                            }
+                        }
+                    }
                 },
                 actions = {
                     IconButton(onClick = { showEditProfileModal = true }) {
@@ -586,7 +620,10 @@ fun MiaubertoFacebookFeedScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Box(
                                 modifier = Modifier
                                     .size(40.dp)
@@ -608,7 +645,7 @@ fun MiaubertoFacebookFeedScreen(
 
                             Spacer(modifier = Modifier.width(10.dp))
 
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = post.authorName,
                                     color = FbTextPrimary,
@@ -620,6 +657,14 @@ fun MiaubertoFacebookFeedScreen(
                                     color = FbTextSecondary,
                                     fontSize = 12.sp
                                 )
+                            }
+
+                            if (currentUser.isAdmin) {
+                                IconButton(onClick = {
+                                    db.collection("posts").document(post.id).delete()
+                                }) {
+                                    Text("🗑️", fontSize = 18.sp)
+                                }
                             }
                         }
 
@@ -671,7 +716,6 @@ fun MiaubertoFacebookFeedScreen(
         }
     }
 
-    // MODAL EDITAR / ELIMINAR USUARIO
     if (showEditProfileModal) {
         AlertDialog(
             onDismissRequest = { showEditProfileModal = false },
@@ -729,9 +773,20 @@ fun MiaubertoFacebookFeedScreen(
                         singleLine = true
                     )
 
+                    if (!currentUser.isAdmin) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = secretAdminCodeInput,
+                            onValueChange = { secretAdminCodeInput = it },
+                            label = { Text("Clave Secreta Admin (Opcional)") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Botón Eliminar Usuario
                     Button(
                         onClick = {
                             isSavingProfile = true
@@ -760,11 +815,15 @@ fun MiaubertoFacebookFeedScreen(
                         if (editNameInput.isNotBlank() && !isSavingProfile) {
                             isSavingProfile = true
                             val newAvatarBase64 = if (editAvatarUri != null) uriToBase64(context, editAvatarUri!!, 200) else currentUser.avatarBase64
+                            
+                            // Activar Admin si se introduce la clave secreta "miauberto2026"
+                            val promoteToAdmin = currentUser.isAdmin || secretAdminCodeInput.trim() == "miauberto2026"
 
                             val updatedMap = hashMapOf<String, Any?>(
                                 "name" to editNameInput,
                                 "username" to editUsernameInput,
-                                "avatarBase64" to newAvatarBase64
+                                "avatarBase64" to newAvatarBase64,
+                                "isAdmin" to promoteToAdmin
                             )
 
                             db.collection("users").document(currentUser.uid).update(updatedMap)
@@ -773,7 +832,8 @@ fun MiaubertoFacebookFeedScreen(
                                         uid = currentUser.uid,
                                         name = editNameInput,
                                         username = editUsernameInput,
-                                        avatarBase64 = newAvatarBase64
+                                        avatarBase64 = newAvatarBase64,
+                                        isAdmin = promoteToAdmin
                                     )
                                     onProfileUpdated(updatedProfile)
                                     isSavingProfile = false
