@@ -1,16 +1,20 @@
 package com.example.miaubertosocial
 
-import android.content.Intent
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
+import android.util.Base64
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,17 +24,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 
-// Paleta de Colores Estilo Facebook
+// Estilo Facebook
 val FbBlue = Color(0xFF1877F2)
 val FbBg = Color(0xFFF0F2F5)
 val FbCardBg = Color(0xFFFFFFFF)
@@ -42,21 +49,38 @@ data class UserProfile(
     val uid: String,
     val name: String,
     val username: String,
-    val avatarEmoji: String
+    val avatarBase64: String? = null
 )
 
 data class Post(
     val id: String,
     val authorName: String,
     val username: String,
-    val avatarEmoji: String,
+    val avatarBase64: String? = null,
     val content: String,
-    val linkUrl: String? = null,
-    val fileUrl: String? = null,
-    val fileName: String? = null,
+    val postImageBase64: String? = null,
     val timestamp: String,
     val likesCount: Int = 0
 )
+
+fun uriToBase64(context: Context, uri: Uri, maxSize: Int = 400): String? {
+    return try {
+        val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
+        val originalBitmap = BitmapFactory.decodeStream(inputStream) ?: return null
+        
+        val ratio = originalBitmap.width.toFloat() / originalBitmap.height.toFloat()
+        val width = if (ratio > 1) maxSize else (maxSize * ratio).toInt()
+        val height = if (ratio > 1) (maxSize / ratio).toInt() else maxSize
+        
+        val scaledBitmap = Bitmap.createScaledBitmap(originalBitmap, width, height, true)
+        val byteArrayOutputStream = ByteArrayOutputStream()
+        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 70, byteArrayOutputStream)
+        val byteArray = byteArrayOutputStream.toByteArray()
+        "data:image/jpeg;base64," + Base64.encodeToString(byteArray, Base64.NO_WRAP)
+    } catch (e: Exception) {
+        null
+    }
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -92,7 +116,7 @@ fun AppNavigationScreen() {
                             uid = user.uid,
                             name = doc.getString("name") ?: "Michi Amigo",
                             username = doc.getString("username") ?: "@michi",
-                            avatarEmoji = doc.getString("avatarEmoji") ?: "🐱"
+                            avatarBase64 = doc.getString("avatarBase64")
                         )
                     }
                     isLoadingProfile = false
@@ -131,18 +155,23 @@ fun AppNavigationScreen() {
 fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
     val auth = remember { FirebaseAuth.getInstance() }
     val db = remember { FirebaseFirestore.getInstance() }
+    val context = LocalContext.current
 
     var isRegisterMode by remember { mutableStateOf(true) }
     var emailInput by remember { mutableStateOf("") }
     var passwordInput by remember { mutableStateOf("") }
     var nameInput by remember { mutableStateOf("") }
     var usernameInput by remember { mutableStateOf("") }
-    var selectedAvatarEmoji by remember { mutableStateOf("🐱") }
     
+    var selectedAvatarUri by remember { mutableStateOf<Uri?>(null) }
     var errorMessage by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
 
-    val avatarOptions = listOf("🐱", "😺", "😸", "😻", "😼", "😽", "🦁", "🐯", "🐶", "🐺")
+    val avatarPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        selectedAvatarUri = uri
+    }
 
     Box(
         modifier = Modifier
@@ -168,40 +197,34 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                     fontWeight = FontWeight.Bold
                 )
 
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = if (isRegisterMode) "Crea una cuenta para conectarte con tus amigos" else "Inicia sesión en tu cuenta",
-                    color = FbTextSecondary,
-                    fontSize = 13.sp
-                )
-
                 Spacer(modifier = Modifier.height(16.dp))
 
                 if (isRegisterMode) {
-                    Text("Elige tu Foto de Perfil:", color = FbTextSecondary, fontSize = 12.sp)
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(vertical = 8.dp)
+                    Text("Foto de Perfil:", color = FbTextSecondary, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .size(80.dp)
+                            .clip(CircleShape)
+                            .background(FbBg)
+                            .border(2.dp, FbBlue, CircleShape)
+                            .clickable { avatarPickerLauncher.launch("image/*") },
+                        contentAlignment = Alignment.Center
                     ) {
-                        items(avatarOptions) { emoji ->
-                            Box(
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(CircleShape)
-                                    .background(if (selectedAvatarEmoji == emoji) FbBlue.copy(alpha = 0.2f) else FbBg)
-                                    .border(
-                                        width = if (selectedAvatarEmoji == emoji) 2.dp else 0.dp,
-                                        color = if (selectedAvatarEmoji == emoji) FbBlue else Color.Transparent,
-                                        shape = CircleShape
-                                    )
-                                    .clickable { selectedAvatarEmoji = emoji },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(emoji, fontSize = 22.sp)
-                            }
+                        if (selectedAvatarUri != null) {
+                            AsyncImage(
+                                model = selectedAvatarUri,
+                                contentDescription = "Avatar seleccionado",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Text("📷 Galería", color = FbBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     OutlinedTextField(
                         value = nameInput,
@@ -250,7 +273,7 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                 Button(
                     onClick = {
                         if (emailInput.isBlank() || passwordInput.isBlank()) {
-                            errorMessage = "Por favor completa todos los campos"
+                            errorMessage = "Completa los campos requeridos"
                             return@Button
                         }
                         isLoading = true
@@ -261,16 +284,18 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                             auth.createUserWithEmailAndPassword(emailInput.trim(), passwordInput.trim())
                                 .addOnSuccessListener { result ->
                                     val uid = result.user?.uid ?: ""
+                                    val avatarBase64 = if (selectedAvatarUri != null) uriToBase64(context, selectedAvatarUri!!, 200) else null
+
                                     val profile = UserProfile(
                                         uid = uid,
                                         name = nameInput.ifBlank { "Michi Amigo" },
                                         username = formattedUsername.ifBlank { "@michi" },
-                                        avatarEmoji = selectedAvatarEmoji
+                                        avatarBase64 = avatarBase64
                                     )
                                     val userMap = hashMapOf(
                                         "name" to profile.name,
                                         "username" to profile.username,
-                                        "avatarEmoji" to profile.avatarEmoji,
+                                        "avatarBase64" to profile.avatarBase64,
                                         "email" to emailInput.trim()
                                     )
                                     db.collection("users").document(uid).set(userMap)
@@ -294,14 +319,14 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                                                 uid = uid,
                                                 name = doc.getString("name") ?: "Michi",
                                                 username = doc.getString("username") ?: "@michi",
-                                                avatarEmoji = doc.getString("avatarEmoji") ?: "🐱"
+                                                avatarBase64 = doc.getString("avatarBase64")
                                             )
                                             onProfileCreated(profile)
                                         }
                                 }
                                 .addOnFailureListener { e ->
                                     isLoading = false
-                                    errorMessage = e.localizedMessage ?: "Error de autenticación"
+                                    errorMessage = e.localizedMessage ?: "Error al iniciar sesión"
                                 }
                         }
                     },
@@ -317,9 +342,7 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
-
                 Divider(color = FbDivider)
-
                 Spacer(modifier = Modifier.height(12.dp))
 
                 TextButton(onClick = { 
@@ -327,7 +350,7 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                     errorMessage = ""
                 }) {
                     Text(
-                        if (isRegisterMode) "¿Ya tienes una cuenta?" else "Crear cuenta de Facebook",
+                        if (isRegisterMode) "¿Ya tienes cuenta? Inicia Sesión" else "Crear cuenta de Facebook",
                         color = FbBlue,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -345,7 +368,14 @@ fun MiaubertoFacebookFeedScreen(currentUser: UserProfile, onLogout: () -> Unit) 
 
     var posts by remember { mutableStateOf<List<Post>>(emptyList()) }
     var newPostContentText by remember { mutableStateOf("") }
+    var selectedPostImageUri by remember { mutableStateOf<Uri?>(null) }
     var isPosting by remember { mutableStateOf(false) }
+
+    val postImagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        selectedPostImageUri = uri
+    }
 
     LaunchedEffect(Unit) {
         db.collection("posts")
@@ -358,11 +388,9 @@ fun MiaubertoFacebookFeedScreen(currentUser: UserProfile, onLogout: () -> Unit) 
                         id = doc.id,
                         authorName = doc.getString("authorName") ?: "Michi",
                         username = doc.getString("username") ?: "@michi",
-                        avatarEmoji = doc.getString("avatarEmoji") ?: "🐱",
+                        avatarBase64 = doc.getString("avatarBase64"),
                         content = doc.getString("content") ?: "",
-                        linkUrl = doc.getString("linkUrl"),
-                        fileUrl = doc.getString("fileUrl"),
-                        fileName = doc.getString("fileName"),
+                        postImageBase64 = doc.getString("postImageBase64"),
                         timestamp = "Hace un momento",
                         likesCount = (doc.getLong("likesCount") ?: 0L).toInt()
                     )
@@ -399,7 +427,6 @@ fun MiaubertoFacebookFeedScreen(currentUser: UserProfile, onLogout: () -> Unit) 
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // CAJA "QUÉ ESTÁS PENSANDO" ESTILO FACEBOOK
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = FbCardBg),
@@ -416,7 +443,16 @@ fun MiaubertoFacebookFeedScreen(currentUser: UserProfile, onLogout: () -> Unit) 
                                     .background(FbBg),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(currentUser.avatarEmoji, fontSize = 22.sp)
+                                if (!currentUser.avatarBase64.isNullOrEmpty()) {
+                                    AsyncImage(
+                                        model = currentUser.avatarBase64,
+                                        contentDescription = "Avatar",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Text("👤", fontSize = 20.sp)
+                                }
                             }
 
                             Spacer(modifier = Modifier.width(10.dp))
@@ -427,7 +463,7 @@ fun MiaubertoFacebookFeedScreen(currentUser: UserProfile, onLogout: () -> Unit) 
                                 placeholder = { Text("¿Qué estás pensando, ${currentUser.name.split(" ")[0]}?") },
                                 modifier = Modifier
                                     .weight(1f)
-                                    .heightIn(min = 50.dp, max = 120.dp),
+                                    .heightIn(min = 50.dp, max = 100.dp),
                                 shape = RoundedCornerShape(20.dp),
                                 colors = OutlinedTextFieldDefaults.colors(
                                     unfocusedBorderColor = Color.Transparent,
@@ -438,43 +474,72 @@ fun MiaubertoFacebookFeedScreen(currentUser: UserProfile, onLogout: () -> Unit) 
                             )
                         }
 
-                        if (newPostContentText.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End
+                        if (selectedPostImageUri != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(180.dp)
+                                    .clip(RoundedCornerShape(8.dp))
                             ) {
-                                Button(
-                                    onClick = {
-                                        if (newPostContentText.isNotBlank() && !isPosting) {
-                                            isPosting = true
-                                            val newPostMap = hashMapOf(
-                                                "authorName" to currentUser.name,
-                                                "username" to currentUser.username,
-                                                "avatarEmoji" to currentUser.avatarEmoji,
-                                                "content" to newPostContentText,
-                                                "likesCount" to 0,
-                                                "createdAt" to System.currentTimeMillis()
-                                            )
-                                            db.collection("posts").add(newPostMap)
-                                                .addOnSuccessListener {
-                                                    newPostContentText = ""
-                                                    isPosting = false
-                                                }
-                                                .addOnFailureListener {
-                                                    isPosting = false
-                                                }
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = FbBlue),
-                                    shape = RoundedCornerShape(6.dp),
-                                    enabled = !isPosting
-                                ) {
-                                    if (isPosting) {
-                                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp))
-                                    } else {
-                                        Text("Publicar", color = Color.White, fontWeight = FontWeight.Bold)
+                                AsyncImage(
+                                    model = selectedPostImageUri,
+                                    contentDescription = "Imagen seleccionada",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Divider(color = FbDivider, thickness = 0.5.dp)
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(onClick = { postImagePickerLauncher.launch("image/*") }) {
+                                Text("🖼️ Galería", color = Color(0xFF45BD62), fontWeight = FontWeight.Bold)
+                            }
+
+                            Button(
+                                onClick = {
+                                    if ((newPostContentText.isNotBlank() || selectedPostImageUri != null) && !isPosting) {
+                                        isPosting = true
+
+                                        val imageBase64 = if (selectedPostImageUri != null) uriToBase64(context, selectedPostImageUri!!, 500) else null
+
+                                        val newPostMap = hashMapOf(
+                                            "authorName" to currentUser.name,
+                                            "username" to currentUser.username,
+                                            "avatarBase64" to currentUser.avatarBase64,
+                                            "content" to newPostContentText,
+                                            "postImageBase64" to imageBase64,
+                                            "likesCount" to 0,
+                                            "createdAt" to System.currentTimeMillis()
+                                        )
+                                        db.collection("posts").add(newPostMap)
+                                            .addOnSuccessListener {
+                                                newPostContentText = ""
+                                                selectedPostImageUri = null
+                                                isPosting = false
+                                            }
+                                            .addOnFailureListener {
+                                                isPosting = false
+                                            }
                                     }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = FbBlue),
+                                shape = RoundedCornerShape(6.dp),
+                                enabled = !isPosting && (newPostContentText.isNotBlank() || selectedPostImageUri != null)
+                            ) {
+                                if (isPosting) {
+                                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp))
+                                } else {
+                                    Text("Publicar", color = Color.White, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -482,7 +547,6 @@ fun MiaubertoFacebookFeedScreen(currentUser: UserProfile, onLogout: () -> Unit) 
                 }
             }
 
-            // LISTA DE PUBLICACIONES DEL MURO
             items(posts) { post ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = FbCardBg),
@@ -499,7 +563,16 @@ fun MiaubertoFacebookFeedScreen(currentUser: UserProfile, onLogout: () -> Unit) 
                                     .background(FbBg),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(post.avatarEmoji, fontSize = 22.sp)
+                                if (!post.avatarBase64.isNullOrEmpty()) {
+                                    AsyncImage(
+                                        model = post.avatarBase64,
+                                        contentDescription = "Avatar",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Text("👤", fontSize = 20.sp)
+                                }
                             }
 
                             Spacer(modifier = Modifier.width(10.dp))
@@ -530,33 +603,17 @@ fun MiaubertoFacebookFeedScreen(currentUser: UserProfile, onLogout: () -> Unit) 
                             )
                         }
 
-                        if (!post.linkUrl.isNullOrEmpty()) {
+                        if (!post.postImageBase64.isNullOrEmpty()) {
                             Spacer(modifier = Modifier.height(10.dp))
-                            Surface(
-                                color = FbBg,
-                                shape = RoundedCornerShape(6.dp),
+                            AsyncImage(
+                                model = post.postImageBase64,
+                                contentDescription = "Imagen del post",
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(post.linkUrl))
-                                        context.startActivity(intent)
-                                    }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("🔗", fontSize = 20.sp)
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = post.linkUrl,
-                                        color = FbBlue,
-                                        fontSize = 13.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
+                                    .heightIn(max = 350.dp)
+                                    .clip(RoundedCornerShape(6.dp)),
+                                contentScale = ContentScale.Crop
+                            )
                         }
 
                         Spacer(modifier = Modifier.height(12.dp))
