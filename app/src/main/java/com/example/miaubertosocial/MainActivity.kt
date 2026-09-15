@@ -14,6 +14,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -44,15 +46,15 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.util.regex.Pattern
 
-// --- PALETA ESTÉTICA EXCLUSIVA: MIAUBERTO EVIL DARK MODE ---
-val MiaubertoBg = Color(0xFF101014)          // Fondo ultra oscuro elegancia villana
-val MiaubertoCardBg = Color(0xFF1C1C22)      // Tarjetas en gris oscuro carbón
-val MiaubertoRed = Color(0xFFE63946)         // Rojo Neón Miau (Botonera y acentos)
-val MiaubertoGold = Color(0xFFF59E0B)        // Dorado Supremo
-val MiaubertoTextPrimary = Color(0xFFF3F4F6)  // Blanco suave lectura nocturna
-val MiaubertoTextSecondary = Color(0xFF9CA3AF)// Gris medio
-val MiaubertoBorder = Color(0xFF2A2A34)       // Borde fino tarjetas
-val MiaubertoDarkBtn = Color(0xFF262630)      // Fondo de botones interactivos
+// ESTÉTICA MIAUBERTO EVIL DARK
+val MiaubertoBg = Color(0xFF101014)
+val MiaubertoCardBg = Color(0xFF1C1C22)
+val MiaubertoRed = Color(0xFFE63946)
+val MiaubertoGold = Color(0xFFF59E0B)
+val MiaubertoTextPrimary = Color(0xFFF3F4F6)
+val MiaubertoTextSecondary = Color(0xFF9CA3AF)
+val MiaubertoBorder = Color(0xFF2A2A34)
+val MiaubertoDarkBtn = Color(0xFF262630)
 
 data class UserProfile(
     val uid: String,
@@ -83,7 +85,20 @@ data class Post(
     val commentsCount: Int = 0
 )
 
-fun uriToBase64(context: Context, uri: Uri, maxSize: Int = 400): String? {
+// Convierte Base64 a Bitmap de Compose
+fun decodeBase64ToBitmap(base64Str: String?): Bitmap? {
+    if (base64Str.isNullOrEmpty()) return null
+    return try {
+        val cleanStr = base64Str.substringAfter(",")
+        val decodedBytes = Base64.decode(cleanStr, Base64.DEFAULT)
+        BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
+    } catch (e: Exception) {
+        null
+    }
+}
+
+// Convierte Uri a Base64 optimizado para Firestore
+fun uriToBase64(context: Context, uri: Uri, maxSize: Int = 500): String? {
     return try {
         val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
         val originalBitmap = BitmapFactory.decodeStream(inputStream) ?: return null
@@ -94,7 +109,7 @@ fun uriToBase64(context: Context, uri: Uri, maxSize: Int = 400): String? {
         
         val scaledBitmap = Bitmap.createScaledBitmap(originalBitmap, width, height, true)
         val byteArrayOutputStream = ByteArrayOutputStream()
-        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 70, byteArrayOutputStream)
+        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 60, byteArrayOutputStream)
         val byteArray = byteArrayOutputStream.toByteArray()
         "data:image/jpeg;base64," + Base64.encodeToString(byteArray, Base64.NO_WRAP)
     } catch (e: Exception) {
@@ -617,9 +632,10 @@ fun MiaubertoFacebookFeedScreen(
                                     .border(1.dp, MiaubertoRed, CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
-                                if (!currentUser.avatarBase64.isNullOrEmpty()) {
-                                    AsyncImage(
-                                        model = currentUser.avatarBase64,
+                                val userAvatarBitmap = decodeBase64ToBitmap(currentUser.avatarBase64)
+                                if (userAvatarBitmap != null) {
+                                    Image(
+                                        bitmap = userAvatarBitmap.asImageBitmap(),
                                         contentDescription = "Avatar",
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop
@@ -685,7 +701,7 @@ fun MiaubertoFacebookFeedScreen(
                                     if ((newPostContentText.isNotBlank() || selectedPostImageUri != null) && !isPosting) {
                                         isPosting = true
 
-                                        val imageBase64 = if (selectedPostImageUri != null) uriToBase64(context, selectedPostImageUri!!, 500) else null
+                                        val imageBase64 = if (selectedPostImageUri != null) uriToBase64(context, selectedPostImageUri!!, 400) else null
 
                                         val newPostMap = hashMapOf(
                                             "authorName" to currentUser.name,
@@ -728,6 +744,8 @@ fun MiaubertoFacebookFeedScreen(
                 val detectedYoutubeUrl = extractYoutubeUrl(post.content)
                 val userHasLiked = post.likesList.contains(currentUser.uid)
                 val userHasDisliked = post.dislikesList.contains(currentUser.uid)
+                val postImageBitmap = decodeBase64ToBitmap(post.postImageBase64)
+                val authorAvatarBitmap = decodeBase64ToBitmap(post.avatarBase64)
 
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
@@ -749,9 +767,9 @@ fun MiaubertoFacebookFeedScreen(
                                     .border(1.dp, MiaubertoRed, CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
-                                if (!post.avatarBase64.isNullOrEmpty()) {
-                                    AsyncImage(
-                                        model = post.avatarBase64,
+                                if (authorAvatarBitmap != null) {
+                                    Image(
+                                        bitmap = authorAvatarBitmap.asImageBitmap(),
                                         contentDescription = "Avatar",
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop
@@ -822,11 +840,12 @@ fun MiaubertoFacebookFeedScreen(
                             }
                         }
 
-                        if (!post.postImageBase64.isNullOrEmpty()) {
+                        // DECODIFICACIÓN Y DESPLIEGUE DIRECTO DE LA IMAGEN ADJUNTADA
+                        if (postImageBitmap != null) {
                             Spacer(modifier = Modifier.height(10.dp))
-                            AsyncImage(
-                                model = post.postImageBase64,
-                                contentDescription = "Imagen",
+                            Image(
+                                bitmap = postImageBitmap.asImageBitmap(),
+                                contentDescription = "Imagen de publicación",
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .heightIn(max = 350.dp)
@@ -978,6 +997,7 @@ fun MiaubertoFacebookFeedScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(commentsList) { item ->
+                            val commentAvatarBitmap = decodeBase64ToBitmap(item.avatarBase64)
                             Row(verticalAlignment = Alignment.Top) {
                                 Box(
                                     modifier = Modifier
@@ -987,9 +1007,9 @@ fun MiaubertoFacebookFeedScreen(
                                         .border(1.dp, MiaubertoRed, CircleShape),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    if (!item.avatarBase64.isNullOrEmpty()) {
-                                        AsyncImage(
-                                            model = item.avatarBase64,
+                                    if (commentAvatarBitmap != null) {
+                                        Image(
+                                            bitmap = commentAvatarBitmap.asImageBitmap(),
                                             contentDescription = "Avatar",
                                             modifier = Modifier.fillMaxSize(),
                                             contentScale = ContentScale.Crop
@@ -1082,6 +1102,7 @@ fun MiaubertoFacebookFeedScreen(
                             .clickable { editAvatarPickerLauncher.launch("image/*") },
                         contentAlignment = Alignment.Center
                     ) {
+                        val modalAvatarBitmap = decodeBase64ToBitmap(currentUser.avatarBase64)
                         if (editAvatarUri != null) {
                             AsyncImage(
                                 model = editAvatarUri,
@@ -1089,9 +1110,9 @@ fun MiaubertoFacebookFeedScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop
                             )
-                        } else if (!currentUser.avatarBase64.isNullOrEmpty()) {
-                            AsyncImage(
-                                model = currentUser.avatarBase64,
+                        } else if (modalAvatarBitmap != null) {
+                            Image(
+                                bitmap = modalAvatarBitmap.asImageBitmap(),
                                 contentDescription = "Avatar actual",
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop
