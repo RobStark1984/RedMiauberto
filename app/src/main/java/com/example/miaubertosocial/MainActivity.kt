@@ -6,6 +6,9 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.util.Base64
+import android.webkit.WebChromeClient
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -30,12 +33,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
+import java.util.regex.Pattern
 
 // Estilo Facebook
 val FbBlue = Color(0xFF1877F2)
@@ -83,6 +88,32 @@ fun uriToBase64(context: Context, uri: Uri, maxSize: Int = 400): String? {
     }
 }
 
+// Función para extraer URL de YouTube
+fun extractYoutubeUrl(text: String): String? {
+    val pattern = "(?i)\\b((?:https?://|www\\d{0,3}[.]|[a-z0-9.\\-]+[.][a-z]{2,4}/)(?:[^\\s()<>]+|\\((?:[^\\s()<>]+|(?:\\([^\\s()<>]+\\)))*\\))+(?:\\((?:[^\\s()<>]+|(?:\\([^\\s()<>]+\\)))*\\)|[^\\s`!()\\[\\]{};:'\".,<>?«»“”‘’]))"
+    val compiledPattern = Pattern.compile(pattern)
+    val matcher = compiledPattern.matcher(text)
+    while (matcher.find()) {
+        val url = matcher.group()
+        if (url.contains("youtube.com") || url.contains("youtu.be")) {
+            return url
+        }
+    }
+    return null
+}
+
+fun getEmbedYoutubeUrl(url: String): String {
+    return if (url.contains("youtu.be/")) {
+        val id = url.substringAfter("youtu.be/").substringBefore("?")
+        "https://www.youtube.com/embed/$id"
+    } else if (url.contains("watch?v=")) {
+        val id = url.substringAfter("watch?v=").substringBefore("&")
+        "https://www.youtube.com/embed/$id"
+    } else {
+        url
+    }
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -118,7 +149,6 @@ fun AppNavigationScreen() {
                         val email = (doc.getString("email") ?: user.email ?: "").lowercase()
                         val explicitAdmin = doc.getBoolean("isAdmin") ?: false
                         
-                        // Lógica de Administrador Principal + Backup Admin
                         val isMainAdmin = email.contains("rob") || username.contains("robstark") || name.contains("Robespierre")
                         val isBackupAdmin = email.contains("admin") || email.contains("backup") || email == "admin@miauberto.com"
                         val isAdminUser = explicitAdmin || isMainAdmin || isBackupAdmin
@@ -613,6 +643,8 @@ fun MiaubertoFacebookFeedScreen(
             }
 
             items(posts) { post ->
+                val detectedYoutubeUrl = extractYoutubeUrl(post.content)
+
                 Card(
                     colors = CardDefaults.cardColors(containerColor = FbCardBg),
                     shape = RoundedCornerShape(0.dp),
@@ -677,6 +709,32 @@ fun MiaubertoFacebookFeedScreen(
                                 fontSize = 15.sp,
                                 lineHeight = 21.sp
                             )
+                        }
+
+                        // REPRODUCTOR INTEGRADO DE YOUTUBE DENTRO DEL MURO
+                        if (detectedYoutubeUrl != null) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            val embedUrl = getEmbedYoutubeUrl(detectedYoutubeUrl)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(210.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color.Black)
+                            ) {
+                                AndroidView(
+                                    factory = { ctx ->
+                                        WebView(ctx).apply {
+                                            settings.javaScriptEnabled = true
+                                            settings.domStorageEnabled = true
+                                            webChromeClient = WebChromeClient()
+                                            webViewClient = WebViewClient()
+                                            loadUrl(embedUrl)
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
                         }
 
                         if (!post.postImageBase64.isNullOrEmpty()) {
@@ -816,7 +874,6 @@ fun MiaubertoFacebookFeedScreen(
                             isSavingProfile = true
                             val newAvatarBase64 = if (editAvatarUri != null) uriToBase64(context, editAvatarUri!!, 200) else currentUser.avatarBase64
                             
-                            // Activar Admin si se introduce la clave secreta "miauberto2026"
                             val promoteToAdmin = currentUser.isAdmin || secretAdminCodeInput.trim() == "miauberto2026"
 
                             val updatedMap = hashMapOf<String, Any?>(
