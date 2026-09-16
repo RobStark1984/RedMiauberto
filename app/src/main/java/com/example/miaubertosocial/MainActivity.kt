@@ -32,12 +32,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
+import com.example.miaubertosocial.R
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -175,7 +177,6 @@ fun AppNavigationScreen() {
         if (user != null) {
             val userEmail = (user.email ?: "").lowercase().trim()
             
-            // Consultar la configuración global de Co-Administrador
             db.collection("app_settings").document("config").get()
                 .addOnSuccessListener { configDoc ->
                     val chosenCoAdminEmail = (configDoc.getString("coAdminEmail") ?: "").lowercase().trim()
@@ -188,7 +189,6 @@ fun AppNavigationScreen() {
                                 val isPrivate = doc.getBoolean("isPrivate") ?: false
                                 val isMuted = doc.getBoolean("isMuted") ?: false
                                 
-                                // ÚNICAMENTE el correo principal y el co-administrador elegido tienen permisos
                                 val isAdminUser = (userEmail == MAIN_ADMIN_EMAIL.lowercase()) || (userEmail.isNotBlank() && userEmail == chosenCoAdminEmail)
 
                                 currentUserProfile = UserProfile(
@@ -614,46 +614,42 @@ fun MiaubertoMainScreen(
 
     Scaffold(
         topBar = {
-           TopAppBar(
-    title = {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            // LOGO DE MIAUBERTO EN EL HEADER
-            Image(
-                painter = painterResource(id = R.drawable.app_logo),
-                contentDescription = "Logo Miauberto",
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .border(1.dp, MiaubertoRed, CircleShape),
-                contentScale = ContentScale.Crop
-            )
-            
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Text(
-                "Miauberto Red",
-                color = MiaubertoRed,
-                fontSize = 19.sp,
-                fontWeight = FontWeight.Black
-            )
-            if (currentUser.isAdmin) {
-                Spacer(modifier = Modifier.width(6.dp))
-                Surface(
-                    color = MiaubertoGold,
-                    shape = RoundedCornerShape(6.dp)
-                ) {
-                    Text(
-                        "👑 LÍDER",
-                        color = Color.Black,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Black,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                    )
-                }
-            }
-        }
-    },
-    // ... resto de las acciones y colores se quedan igual
+            TopAppBar(
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource(id = R.drawable.app_logo),
+                            contentDescription = "Logo Miauberto",
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .border(1.dp, MiaubertoRed, CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Miauberto Red",
+                            color = MiaubertoRed,
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                        if (currentUser.isAdmin) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                color = MiaubertoGold,
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    "👑 LÍDER",
+                                    color = Color.Black,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Black,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                },
                 actions = {
                     IconButton(onClick = { 
                         editNameInput = currentUser.name
@@ -1282,7 +1278,6 @@ fun MiaubertoMainScreen(
                         )
                     }
 
-                    // PANEL EXCLUSIVO DEL ADMINISTRADOR PRINCIPAL PARA DESIGNAR CO-ADMINISTRADOR
                     if (currentUser.email.lowercase().trim() == MAIN_ADMIN_EMAIL.lowercase()) {
                         Spacer(modifier = Modifier.height(10.dp))
                         OutlinedTextField(
@@ -1331,7 +1326,6 @@ fun MiaubertoMainScreen(
                             isSavingProfile = true
                             val newAvatarBase64 = if (editAvatarUri != null) uriToBase64(context, editAvatarUri!!, 200) else currentUser.avatarBase64
 
-                            // Guardar Co-Admin si el usuario es el Admin Principal
                             if (currentUser.email.lowercase().trim() == MAIN_ADMIN_EMAIL.lowercase()) {
                                 db.collection("app_settings").document("config").set(
                                     hashMapOf("coAdminEmail" to coAdminEmailInput.trim().lowercase())
