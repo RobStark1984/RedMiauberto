@@ -614,32 +614,46 @@ fun MiaubertoMainScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "😼 Miauberto Red",
-                            color = MiaubertoRed,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Black
-                        )
-                        if (currentUser.isAdmin) {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Surface(
-                                color = MiaubertoGold,
-                                shape = RoundedCornerShape(6.dp)
-                            ) {
-                                Text(
-                                    "👑 LÍDER",
-                                    color = Color.Black,
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Black,
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                    }
-                },
+           TopAppBar(
+    title = {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // LOGO DE MIAUBERTO EN EL HEADER
+            Image(
+                painter = painterResource(id = R.drawable.app_logo),
+                contentDescription = "Logo Miauberto",
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .border(1.dp, MiaubertoRed, CircleShape),
+                contentScale = ContentScale.Crop
+            )
+            
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Text(
+                "Miauberto Red",
+                color = MiaubertoRed,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.Black
+            )
+            if (currentUser.isAdmin) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Surface(
+                    color = MiaubertoGold,
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        "👑 LÍDER",
+                        color = Color.Black,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                }
+            }
+        }
+    },
+    // ... resto de las acciones y colores se quedan igual
                 actions = {
                     IconButton(onClick = { 
                         editNameInput = currentUser.name
