@@ -6,6 +6,9 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.net.Uri
@@ -52,6 +55,9 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
@@ -97,7 +103,7 @@ data class Post(
     val avatarBase64: String? = null,
     val content: String,
     val postImageBase64: String? = null,
-    val mediaType: String? = null, // "image", "audio"
+    val mediaType: String? = null, // "image", "audio", "musicdj"
     val mediaBase64: String? = null,
     val timestamp: String,
     val likesList: List<String> = emptyList(),
@@ -144,6 +150,42 @@ fun fileToBase64(file: File, mimePrefix: String): String? {
         "$mimePrefix," + Base64.encodeToString(bytes, Base64.NO_WRAP)
     } catch (e: Exception) {
         null
+    }
+}
+
+fun playTone(freq: Double, durationMs: Int = 200) {
+    try {
+        val sampleRate = 8000
+        val numSamples = (durationMs * sampleRate) / 1000
+        val sample = ByteArray(numSamples * 2)
+        for (i in 0 until numSamples) {
+            val angle = i * 2.0 * Math.PI * freq / sampleRate
+            val sinVal = Math.sin(angle)
+            val valShort = (sinVal * 32767).toInt().toShort()
+            sample[2 * i] = (valShort.toInt() and 0x00ff).toByte()
+            sample[2 * i + 1] = ((valShort.toInt() and 0xff00) ushr 8).toByte()
+        }
+        val audioTrack = AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+            )
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setSampleRate(sampleRate)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .build()
+            )
+            .setBufferSizeInBytes(sample.size)
+            .setTransferMode(AudioTrack.MODE_STATIC)
+            .build()
+        audioTrack.write(sample, 0, sample.size)
+        audioTrack.play()
+    } catch (e: Exception) {
+        e.printStackTrace()
     }
 }
 
@@ -547,12 +589,13 @@ fun MiaubertoMainScreen(
     onProfileUpdated: (UserProfile) -> Unit,
     onLogout: () -> Unit
 ) {
-    var selectedTab by remember { mutableStateOf(0) }
+    var selectedTab by remember { mutableStateOf(0) } // 0: Muro, 1: Perfil, 2: MusicDJ
     var viewedProfileUid by remember { mutableStateOf<String?>(null) }
 
     val db = remember { FirebaseFirestore.getInstance() }
     val auth = remember { FirebaseAuth.getInstance() }
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     var posts by remember { mutableStateOf<List<Post>>(emptyList()) }
     var newPostContentText by remember { mutableStateOf("") }
@@ -577,6 +620,11 @@ fun MiaubertoMainScreen(
     var isSavingProfile by remember { mutableStateOf(false) }
 
     var selectedPostForMod by remember { mutableStateOf<Post?>(null) }
+
+    // ESTADOS PARA MUSICDJ (5 pistas x 8 pasos: Batería, Bajo, Guitarra, Piano, Trompeta)
+    // 0: Ninguno, 1: Nota baja, 2: Nota media, 3: Nota alta
+    val musicGrid = remember { mutableStateOf(Array(5) { IntArray(8) { 0 } }) }
+    var isPlayingMusicDJ by remember { mutableStateOf(false) }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
@@ -737,7 +785,7 @@ fun MiaubertoMainScreen(
                         viewedProfileUid = null
                     },
                     icon = { Text("🌐", fontSize = 18.sp) },
-                    label = { Text("Muro General", fontSize = 11.sp, color = if (selectedTab == 0 && viewedProfileUid == null) MiaubertoRed else MiaubertoTextSecondary) }
+                    label = { Text("Muro", fontSize = 11.sp, color = if (selectedTab == 0 && viewedProfileUid == null) MiaubertoRed else MiaubertoTextSecondary) }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 1 && viewedProfileUid == null,
@@ -747,6 +795,15 @@ fun MiaubertoMainScreen(
                     },
                     icon = { Text("👤", fontSize = 18.sp) },
                     label = { Text("Mi Perfil", fontSize = 11.sp, color = if (selectedTab == 1 && viewedProfileUid == null) MiaubertoRed else MiaubertoTextSecondary) }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 2,
+                    onClick = {
+                        selectedTab = 2
+                        viewedProfileUid = null
+                    },
+                    icon = { Text("🎵", fontSize = 18.sp) },
+                    label = { Text("MusicDJ", fontSize = 11.sp, color = if (selectedTab == 2) MiaubertoRed else MiaubertoTextSecondary) }
                 )
             }
         },
@@ -758,472 +815,620 @@ fun MiaubertoMainScreen(
             else -> posts
         }
 
-        LazyColumn(
-            contentPadding = PaddingValues(12.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            if (selectedTab == 1 || viewedProfileUid != null) {
-                item {
-                    val targetUid = viewedProfileUid ?: currentUser.uid
-                    val isMyOwn = targetUid == currentUser.uid
+        if (selectedTab == 2) {
+            // VISTA MUSIC DJ CON GUITARRA INCLUIDA
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth().border(1.dp, MiaubertoBorder, RoundedCornerShape(16.dp))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("🎶 MusicDJ™ - Estudio Retro", color = MiaubertoRed, fontSize = 20.sp, fontWeight = FontWeight.Black)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Compón con Batería, Bajo, Guitarra, Piano y Trompeta.", color = MiaubertoTextSecondary, fontSize = 12.sp)
 
-                    var targetProfile by remember(targetUid) { mutableStateOf<UserProfile?>(if (isMyOwn) currentUser else null) }
-                    var profileSubTab by remember(targetUid) { mutableStateOf(0) }
+                        Spacer(modifier = Modifier.height(14.dp))
 
-                    LaunchedEffect(targetUid) {
-                        if (!isMyOwn) {
-                            db.collection("users").document(targetUid).get().addOnSuccessListener { d ->
-                                if (d.exists()) {
-                                    val targetEmail = d.getString("email") ?: ""
-                                    targetProfile = UserProfile(
-                                        uid = targetUid,
-                                        name = d.getString("name") ?: "Michi",
-                                        username = d.getString("username") ?: "@michi",
-                                        email = targetEmail,
-                                        avatarBase64 = d.getString("avatarBase64"),
-                                        isAdmin = false,
-                                        isPrivate = d.getBoolean("isPrivate") ?: false,
-                                        isMuted = d.getBoolean("isMuted") ?: false
-                                    )
+                        val trackIcons = listOf("🥁 Batería", "🎸 Bajo", "🎸 Guitarra", "🎹 Piano", "🎺 Trompeta")
+                        val baseFreqs = listOf(
+                            listOf(120.0, 150.0, 180.0), // Batería
+                            listOf(220.0, 261.6, 329.6), // Bajo
+                            listOf(330.0, 392.0, 493.9), // Guitarra
+                            listOf(440.0, 523.2, 659.2), // Piano
+                            listOf(880.0, 1046.5, 1318.5) // Trompeta
+                        )
+
+                        for (trackIndex in 0..4) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(trackIcons[trackIndex], color = MiaubertoTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(80.dp))
+                                
+                                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    for (stepIndex in 0..7) {
+                                        val stateValue = musicGrid.value[trackIndex][stepIndex]
+                                        Box(
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(
+                                                    when (stateValue) {
+                                                        1 -> Color(0xFF10B981) // Verde
+                                                        2 -> Color(0xFF3B82F6) // Azul
+                                                        3 -> Color(0xFFF59E0B) // Naranja
+                                                        else -> MiaubertoDarkBtn
+                                                    }
+                                                )
+                                                .border(1.dp, MiaubertoBorder, RoundedCornerShape(6.dp))
+                                                .clickable {
+                                                    val nextVal = (stateValue + 1) % 4
+                                                    musicGrid.value = musicGrid.value.mapIndexed { tIdx, row ->
+                                                        if (tIdx == trackIndex) {
+                                                            row.mapIndexed { sIdx, v -> if (sIdx == stepIndex) nextVal else v }.toIntArray()
+                                                        } else {
+                                                            row
+                                                        }
+                                                    }.toTypedArray()
+
+                                                    if (nextVal > 0) {
+                                                        playTone(baseFreqs[trackIndex][nextVal - 1], 150)
+                                                    }
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (stateValue > 0) {
+                                                Text("$stateValue", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    val profileIsPrivate = targetProfile?.isPrivate ?: false
-                    val profileIsMuted = targetProfile?.isMuted ?: false
-                    val canViewPrivateContent = isMyOwn || currentUser.isAdmin || !profileIsPrivate
+                        Spacer(modifier = Modifier.height(18.dp))
 
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, MiaubertoBorder, RoundedCornerShape(16.dp))
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(18.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            val profAvatar = decodeBase64ToBitmap(targetProfile?.avatarBase64)
-                            Box(
-                                modifier = Modifier
-                                    .size(80.dp)
-                                    .clip(CircleShape)
-                                    .background(MiaubertoBg)
-                                    .border(2.dp, MiaubertoRed, CircleShape),
-                                contentAlignment = Alignment.Center
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button(
+                                onClick = {
+                                    if (!isPlayingMusicDJ) {
+                                        isPlayingMusicDJ = true
+                                        coroutineScope.launch(Dispatchers.Default) {
+                                            for (step in 0..7) {
+                                                if (!isPlayingMusicDJ) break
+                                                for (track in 0..4) {
+                                                    val note = musicGrid.value[track][step]
+                                                    if (note > 0) {
+                                                        val freqs = baseFreqs[track]
+                                                        playTone(freqs[note - 1], 180)
+                                                    }
+                                                }
+                                                delay(250L)
+                                            }
+                                            isPlayingMusicDJ = false
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = MiaubertoRed),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp)
                             ) {
-                                if (profAvatar != null) {
-                                    Image(
-                                        bitmap = profAvatar.asImageBitmap(),
-                                        contentDescription = "Avatar Perfil",
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
+                                Text(if (isPlayingMusicDJ) "Reproduciendo... 🎶" else "Reproducir Melodía ▶️", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            Button(
+                                onClick = {
+                                    // Publicar MusicDJ al Muro General (5 pistas x 8 pasos = 40 caracteres)
+                                    var serializedMelody = ""
+                                    for (t in 0..4) {
+                                        for (s in 0..7) {
+                                            serializedMelody += musicGrid.value[t][s].toString()
+                                        }
+                                    }
+
+                                    val newPostMap = hashMapOf(
+                                            "authorUid" to currentUser.uid,
+                                            "authorName" to currentUser.name,
+                                            "username" to currentUser.username,
+                                            "avatarBase64" to currentUser.avatarBase64,
+                                            "content" to "¡He compuesto una melodía retro con MusicDJ (con guitarra incluida)! 🎸🎶🎵",
+                                            "mediaType" to "musicdj",
+                                            "mediaBase64" to serializedMelody,
+                                            "likesList" to emptyList<String>(),
+                                            "dislikesList" to emptyList<String>(),
+                                            "commentsCount" to 0,
+                                            "createdAt" to System.currentTimeMillis()
                                     )
-                                } else {
-                                    Text("😼", fontSize = 40.sp)
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = targetProfile?.name ?: "Cargando...",
-                                    color = MiaubertoTextPrimary,
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                if (profileIsPrivate) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("🔒", fontSize = 16.sp)
-                                }
-                                if (profileIsMuted) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("🔇", fontSize = 16.sp)
-                                }
-                            }
-
-                            Text(
-                                text = targetProfile?.username ?: "",
-                                color = MiaubertoTextSecondary,
-                                fontSize = 13.sp
-                            )
-
-                            if (currentUser.isAdmin && !isMyOwn && targetProfile != null) {
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(
-                                        onClick = {
-                                            val newMuteStatus = !profileIsMuted
-                                            db.collection("users").document(targetUid).update("isMuted", newMuteStatus)
-                                            targetProfile = targetProfile?.copy(isMuted = newMuteStatus)
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = MiaubertoDarkBtn),
-                                        shape = RoundedCornerShape(8.dp)
-                                    ) {
-                                        Text(if (profileIsMuted) "🔊 Des-silenciar" else "🔇 Silenciar", fontSize = 11.sp, color = MiaubertoGold)
+                                    db.collection("posts").add(newPostMap).addOnSuccessListener {
+                                        selectedTab = 0
                                     }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = MiaubertoGold),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Compartir en Muro 🚀", fontSize = 12.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            LazyColumn(
+                contentPadding = PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                if (selectedTab == 1 || viewedProfileUid != null) {
+                    item {
+                        val targetUid = viewedProfileUid ?: currentUser.uid
+                        val isMyOwn = targetUid == currentUser.uid
 
-                                    Button(
-                                        onClick = {
-                                            db.collection("users").document(targetUid).delete()
-                                            viewedProfileUid = null
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
-                                        shape = RoundedCornerShape(8.dp)
-                                    ) {
-                                        Text("🥾 Expulsar", fontSize = 11.sp, color = Color.White)
+                        var targetProfile by remember(targetUid) { mutableStateOf<UserProfile?>(if (isMyOwn) currentUser else null) }
+                        var profileSubTab by remember(targetUid) { mutableStateOf(0) }
+
+                        LaunchedEffect(targetUid) {
+                            if (!isMyOwn) {
+                                db.collection("users").document(targetUid).get().addOnSuccessListener { d ->
+                                    if (d.exists()) {
+                                        val targetEmail = d.getString("email") ?: ""
+                                        targetProfile = UserProfile(
+                                            uid = targetUid,
+                                            name = d.getString("name") ?: "Michi",
+                                            username = d.getString("username") ?: "@michi",
+                                            email = targetEmail,
+                                            avatarBase64 = d.getString("avatarBase64"),
+                                            isAdmin = false,
+                                            isPrivate = d.getBoolean("isPrivate") ?: false,
+                                            isMuted = d.getBoolean("isMuted") ?: false
+                                        )
                                     }
                                 }
                             }
+                        }
 
-                            Spacer(modifier = Modifier.height(14.dp))
+                        val profileIsPrivate = targetProfile?.isPrivate ?: false
+                        val profileIsMuted = targetProfile?.isMuted ?: false
+                        val canViewPrivateContent = isMyOwn || currentUser.isAdmin || !profileIsPrivate
 
-                            if (canViewPrivateContent) {
-                                Row(
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, MiaubertoBorder, RoundedCornerShape(16.dp))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(18.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                val profAvatar = decodeBase64ToBitmap(targetProfile?.avatarBase64)
+                                Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(MiaubertoBg, RoundedCornerShape(10.dp))
-                                        .padding(4.dp),
-                                    horizontalArrangement = Arrangement.SpaceEvenly
+                                        .size(80.dp)
+                                        .clip(CircleShape)
+                                        .background(MiaubertoBg)
+                                        .border(2.dp, MiaubertoRed, CircleShape),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Button(
-                                        onClick = { profileSubTab = 0 },
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (profileSubTab == 0) MiaubertoRed else Color.Transparent
-                                        ),
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(8.dp)
-                                    ) {
-                                        Text("📝 Muro", fontSize = 12.sp, color = if (profileSubTab == 0) Color.White else MiaubertoTextSecondary, fontWeight = FontWeight.Bold)
+                                    if (profAvatar != null) {
+                                        Image(
+                                            bitmap = profAvatar.asImageBitmap(),
+                                            contentDescription = "Avatar Perfil",
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    } else {
+                                        Text("😼", fontSize = 40.sp)
                                     }
+                                }
 
-                                    Button(
-                                        onClick = { profileSubTab = 1 },
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (profileSubTab == 1) MiaubertoRed else Color.Transparent
-                                        ),
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(8.dp)
-                                    ) {
-                                        Text("🖼️ Galería", fontSize = 12.sp, color = if (profileSubTab == 1) Color.White else MiaubertoTextSecondary, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = targetProfile?.name ?: "Cargando...",
+                                        color = MiaubertoTextPrimary,
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    if (profileIsPrivate) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("🔒", fontSize = 16.sp)
+                                    }
+                                    if (profileIsMuted) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("🔇", fontSize = 16.sp)
+                                    }
+                                }
+
+                                Text(
+                                    text = targetProfile?.username ?: "",
+                                    color = MiaubertoTextSecondary,
+                                    fontSize = 13.sp
+                                )
+
+                                if (currentUser.isAdmin && !isMyOwn && targetProfile != null) {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(
+                                            onClick = {
+                                                val newMuteStatus = !profileIsMuted
+                                                db.collection("users").document(targetUid).update("isMuted", newMuteStatus)
+                                                targetProfile = targetProfile?.copy(isMuted = newMuteStatus)
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = MiaubertoDarkBtn),
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Text(if (profileIsMuted) "🔊 Des-silenciar" else "🔇 Silenciar", fontSize = 11.sp, color = MiaubertoGold)
+                                        }
+
+                                        Button(
+                                            onClick = {
+                                                db.collection("users").document(targetUid).delete()
+                                                viewedProfileUid = null
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Text("🥾 Expulsar", fontSize = 11.sp, color = Color.White)
+                                        }
                                     }
                                 }
 
                                 Spacer(modifier = Modifier.height(14.dp))
 
-                                if (profileSubTab == 0) {
-                                    Text(
-                                        text = "📝 ${displayedPosts.size} Publicaciones en su Muro",
-                                        color = MiaubertoTextSecondary,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                } else {
-                                    val galleryPosts = displayedPosts.filter { 
-                                        it.mediaType == "image" && !it.mediaBase64.isNullOrEmpty() 
+                                if (canViewPrivateContent) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(MiaubertoBg, RoundedCornerShape(10.dp))
+                                            .padding(4.dp),
+                                        horizontalArrangement = Arrangement.SpaceEvenly
+                                    ) {
+                                        Button(
+                                            onClick = { profileSubTab = 0 },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (profileSubTab == 0) MiaubertoRed else Color.Transparent
+                                            ),
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Text("📝 Muro", fontSize = 12.sp, color = if (profileSubTab == 0) Color.White else MiaubertoTextSecondary, fontWeight = FontWeight.Bold)
+                                        }
+
+                                        Button(
+                                            onClick = { profileSubTab = 1 },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (profileSubTab == 1) MiaubertoRed else Color.Transparent
+                                            ),
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Text("🖼️ Galería", fontSize = 12.sp, color = if (profileSubTab == 1) Color.White else MiaubertoTextSecondary, fontWeight = FontWeight.Bold)
+                                        }
                                     }
 
-                                    if (galleryPosts.isEmpty()) {
-                                        Box(modifier = Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
-                                            Text("No hay fotos en la galería aún 🐾", color = MiaubertoTextSecondary, fontSize = 12.sp)
-                                        }
+                                    Spacer(modifier = Modifier.height(14.dp))
+
+                                    if (profileSubTab == 0) {
+                                        Text(
+                                            text = "📝 ${displayedPosts.size} Publicaciones en su Muro",
+                                            color = MiaubertoTextSecondary,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
                                     } else {
-                                        LazyVerticalGrid(
-                                            columns = GridCells.Fixed(3),
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(280.dp),
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            items(galleryPosts) { post ->
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(90.dp)
-                                                        .clip(RoundedCornerShape(8.dp))
-                                                        .background(MiaubertoBg)
-                                                        .border(1.dp, MiaubertoBorder, RoundedCornerShape(8.dp))
-                                                ) {
-                                                    val bmp = decodeBase64ToBitmap(post.mediaBase64)
-                                                    if (bmp != null) {
-                                                        Image(
-                                                            bitmap = bmp.asImageBitmap(),
-                                                            contentDescription = "Foto galería",
-                                                            modifier = Modifier.fillMaxSize(),
-                                                            contentScale = ContentScale.Crop
-                                                        )
+                                        val galleryPosts = displayedPosts.filter { 
+                                            it.mediaType == "image" && !it.mediaBase64.isNullOrEmpty() 
+                                        }
+
+                                        if (galleryPosts.isEmpty()) {
+                                            Box(modifier = Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
+                                                Text("No hay fotos en la galería aún 🐾", color = MiaubertoTextSecondary, fontSize = 12.sp)
+                                            }
+                                        } else {
+                                            LazyVerticalGrid(
+                                                columns = GridCells.Fixed(3),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(280.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                items(galleryPosts) { post ->
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(90.dp)
+                                                            .clip(RoundedCornerShape(8.dp))
+                                                            .background(MiaubertoBg)
+                                                            .border(1.dp, MiaubertoBorder, RoundedCornerShape(8.dp))
+                                                    ) {
+                                                        val bmp = decodeBase64ToBitmap(post.mediaBase64)
+                                                        if (bmp != null) {
+                                                            Image(
+                                                                bitmap = bmp.asImageBitmap(),
+                                                                contentDescription = "Foto galería",
+                                                                modifier = Modifier.fillMaxSize(),
+                                                                contentScale = ContentScale.Crop
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }
                                         }
                                     }
-                                }
-                            } else {
-                                Surface(
-                                    color = Color(0xFF374151),
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier.padding(14.dp)
+                                } else {
+                                    Surface(
+                                        color = Color(0xFF374151),
+                                        shape = RoundedCornerShape(10.dp)
                                     ) {
-                                        Text("🔒 Perfil Privado", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text("Este michi ha configurado su perfil como privado.", color = MiaubertoTextSecondary, fontSize = 12.sp)
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            modifier = Modifier.padding(14.dp)
+                                        ) {
+                                            Text("🔒 Perfil Privado", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text("Este michi ha configurado su perfil como privado.", color = MiaubertoTextSecondary, fontSize = 12.sp)
+                                        }
                                     }
                                 }
-                            }
 
-                            if (viewedProfileUid != null) {
-                                Spacer(modifier = Modifier.height(10.dp))
-                                TextButton(onClick = { viewedProfileUid = null }) {
-                                    Text("⬅️ Volver al Muro General", color = MiaubertoTextSecondary, fontSize = 12.sp)
+                                if (viewedProfileUid != null) {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    TextButton(onClick = { viewedProfileUid = null }) {
+                                        Text("⬅️ Volver al Muro General", color = MiaubertoTextSecondary, fontSize = 12.sp)
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            if (viewedProfileUid == null && selectedTab == 0) {
-                item {
-                    if (currentUser.isMuted) {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF374151)),
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "🔇 Has sido silenciado por el Líder Supremo por infringir las reglas. No puedes publicar ni opinar.",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(14.dp)
-                            )
-                        }
-                    } else {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .border(1.dp, MiaubertoBorder, RoundedCornerShape(14.dp))
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(44.dp)
-                                            .clip(CircleShape)
-                                            .background(MiaubertoBg)
-                                            .border(1.dp, MiaubertoRed, CircleShape),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        val userAvatarBitmap = decodeBase64ToBitmap(currentUser.avatarBase64)
-                                        if (userAvatarBitmap != null) {
-                                            Image(
-                                                bitmap = userAvatarBitmap.asImageBitmap(),
-                                                contentDescription = "Avatar",
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentScale = ContentScale.Crop
+                if (viewedProfileUid == null && selectedTab == 0) {
+                    item {
+                        if (currentUser.isMuted) {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF374151)),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "🔇 Has sido silenciado por el Líder Supremo por infringir las reglas. No puedes publicar ni opinar.",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(14.dp)
+                                )
+                            }
+                        } else {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .border(1.dp, MiaubertoBorder, RoundedCornerShape(14.dp))
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(44.dp)
+                                                .clip(CircleShape)
+                                                .background(MiaubertoBg)
+                                                .border(1.dp, MiaubertoRed, CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            val userAvatarBitmap = decodeBase64ToBitmap(currentUser.avatarBase64)
+                                            if (userAvatarBitmap != null) {
+                                                Image(
+                                                    bitmap = userAvatarBitmap.asImageBitmap(),
+                                                    contentDescription = "Avatar",
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                            } else {
+                                                Text("😼", fontSize = 22.sp)
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.width(10.dp))
+
+                                        OutlinedTextField(
+                                            value = newPostContentText,
+                                            onValueChange = { newPostContentText = it },
+                                            placeholder = { Text("¿Qué plan malvado trama hoy, ${currentUser.name.split(" ")[0]}?", color = MiaubertoTextSecondary, fontSize = 13.sp) },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .heightIn(min = 50.dp, max = 110.dp),
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedTextColor = MiaubertoTextPrimary,
+                                                unfocusedTextColor = MiaubertoTextPrimary,
+                                                unfocusedBorderColor = MiaubertoBorder,
+                                                focusedBorderColor = MiaubertoRed,
+                                                unfocusedContainerColor = MiaubertoBg,
+                                                focusedContainerColor = MiaubertoBg
                                             )
-                                        } else {
-                                            Text("😼", fontSize = 22.sp)
+                                        )
+                                    }
+
+                                    if (selectedImageUri != null || recordedAudioFile != null) {
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        Surface(
+                                            color = MiaubertoDarkBtn,
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(10.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(
+                                                    text = if (recordedAudioFile != null) (if (isRecordingAudio) "🔴 Grabando nota de voz..." else "🎙️ Nota de voz grabada") else "🖼️ Imagen lista para adjuntar",
+                                                    color = if (isRecordingAudio) MiaubertoRed else MiaubertoTextPrimary,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+
+                                                if (isRecordingAudio) {
+                                                    Button(
+                                                        onClick = {
+                                                            try {
+                                                                mediaRecorder?.stop()
+                                                                mediaRecorder?.release()
+                                                                mediaRecorder = null
+                                                                isRecordingAudio = false
+                                                            } catch (e: Exception) {
+                                                                e.printStackTrace()
+                                                            }
+                                                        },
+                                                        colors = ButtonDefaults.buttonColors(containerColor = MiaubertoRed),
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                                    ) {
+                                                        Text("Detener ⏹️", fontSize = 11.sp, color = Color.White)
+                                                    }
+                                                } else {
+                                                    TextButton(onClick = {
+                                                        selectedImageUri = null
+                                                        recordedAudioFile = null
+                                                    }) {
+                                                        Text("Quitar ❌", color = Color(0xFFEF4444), fontSize = 11.sp)
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
 
-                                    Spacer(modifier = Modifier.width(10.dp))
-
-                                    OutlinedTextField(
-                                        value = newPostContentText,
-                                        onValueChange = { newPostContentText = it },
-                                        placeholder = { Text("¿Qué plan malvado trama hoy, ${currentUser.name.split(" ")[0]}?", color = MiaubertoTextSecondary, fontSize = 13.sp) },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .heightIn(min = 50.dp, max = 110.dp),
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedTextColor = MiaubertoTextPrimary,
-                                            unfocusedTextColor = MiaubertoTextPrimary,
-                                            unfocusedBorderColor = MiaubertoBorder,
-                                            focusedBorderColor = MiaubertoRed,
-                                            unfocusedContainerColor = MiaubertoBg,
-                                            focusedContainerColor = MiaubertoBg
-                                        )
-                                    )
-                                }
-
-                                if (selectedImageUri != null || recordedAudioFile != null) {
                                     Spacer(modifier = Modifier.height(10.dp))
-                                    Surface(
-                                        color = MiaubertoDarkBtn,
-                                        shape = RoundedCornerShape(10.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(10.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Text(
-                                                text = if (recordedAudioFile != null) (if (isRecordingAudio) "🔴 Grabando nota de voz..." else "🎙️ Nota de voz grabada") else "🖼️ Imagen lista para adjuntar",
-                                                color = if (isRecordingAudio) MiaubertoRed else MiaubertoTextPrimary,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
+                                    Divider(color = MiaubertoBorder, thickness = 0.8.dp)
+                                    Spacer(modifier = Modifier.height(6.dp))
 
-                                            if (isRecordingAudio) {
-                                                Button(
-                                                    onClick = {
-                                                        try {
-                                                            mediaRecorder?.stop()
-                                                            mediaRecorder?.release()
-                                                            mediaRecorder = null
-                                                            isRecordingAudio = false
-                                                        } catch (e: Exception) {
-                                                            e.printStackTrace()
-                                                        }
-                                                    },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = MiaubertoRed),
-                                                    shape = RoundedCornerShape(6.dp),
-                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                                ) {
-                                                    Text("Detener ⏹️", fontSize = 11.sp, color = Color.White)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceEvenly,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        TextButton(onClick = { imagePickerLauncher.launch("image/*") }) {
+                                            Text("🖼️ Foto", color = MiaubertoTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        TextButton(onClick = {
+                                            val permissionCheck = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
+                                            if (permissionCheck == PackageManager.PERMISSION_GRANTED) {
+                                                try {
+                                                    val outputDir = context.cacheDir
+                                                    val audioFile = File.createTempFile("miau_voice_", ".3gp", outputDir)
+                                                    val recorder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                                        MediaRecorder(context)
+                                                    } else {
+                                                        MediaRecorder()
+                                                    }.apply {
+                                                        setAudioSource(MediaRecorder.AudioSource.MIC)
+                                                        setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
+                                                        setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
+                                                        setOutputFile(audioFile.absolutePath)
+                                                        prepare()
+                                                        start()
+                                                    }
+                                                    mediaRecorder = recorder
+                                                    recordedAudioFile = audioFile
+                                                    isRecordingAudio = true
+                                                    selectedImageUri = null
+                                                } catch (e: Exception) {
+                                                    e.printStackTrace()
                                                 }
                                             } else {
-                                                TextButton(onClick = {
-                                                    selectedImageUri = null
-                                                    recordedAudioFile = null
-                                                }) {
-                                                    Text("Quitar ❌", color = Color(0xFFEF4444), fontSize = 11.sp)
-                                                }
+                                                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                                             }
+                                        }) {
+                                            Text("🎙️ Grabar Audio", color = if (isRecordingAudio) MiaubertoRed else MiaubertoTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
-                                }
 
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Divider(color = MiaubertoBorder, thickness = 0.8.dp)
-                                Spacer(modifier = Modifier.height(6.dp))
+                                    Spacer(modifier = Modifier.height(6.dp))
 
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceEvenly,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    TextButton(onClick = { imagePickerLauncher.launch("image/*") }) {
-                                        Text("🖼️ Foto", color = MiaubertoTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                    TextButton(onClick = {
-                                        val permissionCheck = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
-                                        if (permissionCheck == PackageManager.PERMISSION_GRANTED) {
-                                            try {
-                                                val outputDir = context.cacheDir
-                                                val audioFile = File.createTempFile("miau_voice_", ".3gp", outputDir)
-                                                val recorder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                                                    MediaRecorder(context)
-                                                } else {
-                                                    MediaRecorder()
-                                                }.apply {
-                                                    setAudioSource(MediaRecorder.AudioSource.MIC)
-                                                    setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
-                                                    setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
-                                                    setOutputFile(audioFile.absolutePath)
-                                                    prepare()
-                                                    start()
+                                    Button(
+                                        onClick = {
+                                            if ((newPostContentText.isNotBlank() || selectedImageUri != null || recordedAudioFile != null) && !isPosting && !isRecordingAudio) {
+                                                isPosting = true
+
+                                                var mediaBase64: String? = null
+                                                var mediaType: String? = null
+
+                                                if (selectedImageUri != null) {
+                                                    mediaBase64 = uriToBase64(context, selectedImageUri!!, 300)
+                                                    mediaType = "image"
+                                                } else if (recordedAudioFile != null) {
+                                                    mediaBase64 = fileToBase64(recordedAudioFile!!, "data:audio/3gpp;base64")
+                                                    mediaType = "audio"
                                                 }
-                                                mediaRecorder = recorder
-                                                recordedAudioFile = audioFile
-                                                isRecordingAudio = true
-                                                selectedImageUri = null
-                                            } catch (e: Exception) {
-                                                e.printStackTrace()
+
+                                                val newPostMap = hashMapOf(
+                                                    "authorUid" to currentUser.uid,
+                                                    "authorName" to currentUser.name,
+                                                    "username" to currentUser.username,
+                                                    "avatarBase64" to currentUser.avatarBase64,
+                                                    "content" to newPostContentText,
+                                                    "mediaType" to mediaType,
+                                                    "mediaBase64" to mediaBase64,
+                                                    "likesList" to emptyList<String>(),
+                                                    "dislikesList" to emptyList<String>(),
+                                                    "commentsCount" to 0,
+                                                    "createdAt" to System.currentTimeMillis()
+                                                )
+                                                db.collection("posts").add(newPostMap)
+                                                    .addOnSuccessListener {
+                                                        newPostContentText = ""
+                                                        selectedImageUri = null
+                                                        recordedAudioFile = null
+                                                        isPosting = false
+                                                    }
+                                                    .addOnFailureListener {
+                                                        isPosting = false
+                                                    }
                                             }
+                                        },
+                                        modifier = Modifier.fillMaxWidth().height(42.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = MiaubertoRed),
+                                        shape = RoundedCornerShape(8.dp),
+                                        enabled = !isPosting && !isRecordingAudio && (newPostContentText.isNotBlank() || selectedImageUri != null || recordedAudioFile != null)
+                                    ) {
+                                        if (isPosting) {
+                                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp))
                                         } else {
-                                            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                            Text("Publicar en el Gremio 😼", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                         }
-                                    }) {
-                                        Text("🎙️ Grabar Audio", color = if (isRecordingAudio) MiaubertoRed else MiaubertoTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                Button(
-                                    onClick = {
-                                        if ((newPostContentText.isNotBlank() || selectedImageUri != null || recordedAudioFile != null) && !isPosting && !isRecordingAudio) {
-                                            isPosting = true
-
-                                            var mediaBase64: String? = null
-                                            var mediaType: String? = null
-
-                                            if (selectedImageUri != null) {
-                                                mediaBase64 = uriToBase64(context, selectedImageUri!!, 300)
-                                                mediaType = "image"
-                                            } else if (recordedAudioFile != null) {
-                                                mediaBase64 = fileToBase64(recordedAudioFile!!, "data:audio/3gpp;base64")
-                                                mediaType = "audio"
-                                            }
-
-                                            val newPostMap = hashMapOf(
-                                                "authorUid" to currentUser.uid,
-                                                "authorName" to currentUser.name,
-                                                "username" to currentUser.username,
-                                                "avatarBase64" to currentUser.avatarBase64,
-                                                "content" to newPostContentText,
-                                                "mediaType" to mediaType,
-                                                "mediaBase64" to mediaBase64,
-                                                "likesList" to emptyList<String>(),
-                                                "dislikesList" to emptyList<String>(),
-                                                "commentsCount" to 0,
-                                                "createdAt" to System.currentTimeMillis()
-                                            )
-                                            db.collection("posts").add(newPostMap)
-                                                .addOnSuccessListener {
-                                                    newPostContentText = ""
-                                                    selectedImageUri = null
-                                                    recordedAudioFile = null
-                                                    isPosting = false
-                                                }
-                                                .addOnFailureListener {
-                                                    isPosting = false
-                                                }
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxWidth().height(42.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = MiaubertoRed),
-                                    shape = RoundedCornerShape(8.dp),
-                                    enabled = !isPosting && !isRecordingAudio && (newPostContentText.isNotBlank() || selectedImageUri != null || recordedAudioFile != null)
-                                ) {
-                                    if (isPosting) {
-                                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp))
-                                    } else {
-                                        Text("Publicar en el Gremio 😼", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            if (selectedTab == 0) {
-                items(displayedPosts) { post ->
-                    PostItemCard(
-                        post = post,
-                        currentUser = currentUser,
-                        db = db,
-                        context = context,
-                        onAuthorClick = { uid -> viewedProfileUid = uid },
-                        onModClick = { p -> selectedPostForMod = p },
-                        onCommentClick = { postId -> activeCommentPostId = postId }
-                    )
+                if (selectedTab == 0) {
+                    items(displayedPosts) { post ->
+                        PostItemCard(
+                            post = post,
+                            currentUser = currentUser,
+                            db = db,
+                            context = context,
+                            onAuthorClick = { uid -> viewedProfileUid = uid },
+                            onModClick = { p -> selectedPostForMod = p },
+                            onCommentClick = { postId -> activeCommentPostId = postId }
+                        )
+                    }
                 }
             }
         }
@@ -1602,6 +1807,7 @@ fun PostItemCard(
     val authorAvatarBitmap = remember(post.avatarBase64) { decodeBase64ToBitmap(post.avatarBase64) }
 
     var isPlayingAudio by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
 
     Card(
         colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
@@ -1764,6 +1970,59 @@ fun PostItemCard(
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
                                     Text(if (isPlayingAudio) "Reproduciendo... 🔊" else "Reproducir ▶️", fontSize = 12.sp, color = Color.White)
+                                }
+                            }
+                        }
+                    }
+                    "musicdj" -> {
+                        Surface(
+                            color = MiaubertoDarkBtn,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "🎵 Melodía MusicDJ",
+                                    color = MiaubertoTextPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+
+                                Button(
+                                    onClick = {
+                                        val dataStr = post.mediaBase64 ?: ""
+                                        if (dataStr.length >= 40) {
+                                            coroutineScope.launch(Dispatchers.Default) {
+                                                val baseFreqs = listOf(
+                                                    listOf(120.0, 150.0, 180.0),
+                                                    listOf(220.0, 261.6, 329.6),
+                                                    listOf(330.0, 392.0, 493.9),
+                                                    listOf(440.0, 523.2, 659.2),
+                                                    listOf(880.0, 1046.5, 1318.5)
+                                                )
+                                                for (step in 0..7) {
+                                                    for (track in 0..4) {
+                                                        val idx = track * 8 + step
+                                                        if (idx < dataStr.length) {
+                                                            val note = dataStr[idx].toString().toIntOrNull() ?: 0
+                                                            if (note > 0) {
+                                                                playTone(baseFreqs[track][note - 1], 180)
+                                                            }
+                                                        }
+                                                    }
+                                                    delay(250L)
+                                                }
+                                            }
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MiaubertoGold),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("Escuchar 🎶", fontSize = 12.sp, color = Color.Black, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
