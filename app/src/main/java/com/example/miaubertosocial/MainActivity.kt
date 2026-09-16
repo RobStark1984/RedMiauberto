@@ -1132,7 +1132,7 @@ fun MiaubertoMainScreen(
                                                     MediaRecorder()
                                                 }.apply {
                                                     setAudioSource(MediaRecorder.AudioSource.MIC)
-                                                    setOutputFormat(MediaRecorder.AudioFormat.THREE_GPP)
+                                                    setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
                                                     setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
                                                     setOutputFile(audioFile.absolutePath)
                                                     prepare()
