@@ -24,6 +24,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -564,9 +567,8 @@ fun MiaubertoMainScreen(
     var posts by remember { mutableStateOf<List<Post>>(emptyList()) }
     var newPostContentText by remember { mutableStateOf("") }
     
-    // ESTADOS MULTIMEDIA PARA PUBLICACIONES
     var selectedMediaUri by remember { mutableStateOf<Uri?>(null) }
-    var selectedMediaType by remember { mutableStateOf<String?>(null) } // "image", "video", "audio", "music"
+    var selectedMediaType by remember { mutableStateOf<String?>(null) }
     var recordedAudioFile by remember { mutableStateOf<File?>(null) }
     var isRecordingAudio by remember { mutableStateOf(false) }
     var mediaRecorder by remember { mutableStateOf<MediaRecorder?>(null) }
@@ -587,7 +589,6 @@ fun MiaubertoMainScreen(
 
     var selectedPostForMod by remember { mutableStateOf<Post?>(null) }
 
-    // LAUNCHERS PARA ARCHIVOS MULTIMEDIA
     val imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             selectedMediaUri = uri
@@ -797,6 +798,7 @@ fun MiaubertoMainScreen(
                     val isMyOwn = targetUid == currentUser.uid
 
                     var targetProfile by remember(targetUid) { mutableStateOf<UserProfile?>(if (isMyOwn) currentUser else null) }
+                    var profileSubTab by remember(targetUid) { mutableStateOf(0) } // 0 = Publicaciones, 1 = Galería
 
                     LaunchedEffect(targetUid) {
                         if (!isMyOwn) {
@@ -907,20 +909,100 @@ fun MiaubertoMainScreen(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(10.dp))
+                            Spacer(modifier = Modifier.height(14.dp))
 
                             if (canViewPrivateContent) {
-                                Surface(
-                                    color = MiaubertoDarkBtn,
-                                    shape = RoundedCornerShape(20.dp)
+                                // PESTAÑAS DE NAVEGACIÓN EN PERFIL (PUBLICACIONES VS GALERÍA)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(MiaubertoBg, RoundedCornerShape(10.dp))
+                                        .padding(4.dp),
+                                    horizontalArrangement = Arrangement.SpaceEvenly
                                 ) {
+                                    Button(
+                                        onClick = { profileSubTab = 0 },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (profileSubTab == 0) MiaubertoRed else Color.Transparent
+                                        ),
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text("📝 Muro", fontSize = 12.sp, color = if (profileSubTab == 0) Color.White else MiaubertoTextSecondary, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    Button(
+                                        onClick = { profileSubTab = 1 },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (profileSubTab == 1) MiaubertoRed else Color.Transparent
+                                        ),
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text("🖼️ Galería", fontSize = 12.sp, color = if (profileSubTab == 1) Color.White else MiaubertoTextSecondary, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                if (profileSubTab == 0) {
                                     Text(
                                         text = "📝 ${displayedPosts.size} Publicaciones en su Muro",
-                                        color = MiaubertoRed,
+                                        color = MiaubertoTextSecondary,
                                         fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                        fontWeight = FontWeight.Medium
                                     )
+                                } else {
+                                    // VISTA DE GALERÍA EN GRID (FOTOS Y VIDEOS)
+                                    val galleryPosts = displayedPosts.filter { 
+                                        (it.mediaType == "image" || it.mediaType == "video") && !it.mediaBase64.isNullOrEmpty() 
+                                    }
+
+                                    if (galleryPosts.isEmpty()) {
+                                        Box(modifier = Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
+                                            Text("No hay fotos ni videos en la galería aún 🐾", color = MiaubertoTextSecondary, fontSize = 12.sp)
+                                        }
+                                    } else {
+                                        LazyVerticalGrid(
+                                            columns = GridCells.Fixed(3),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(280.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            items(galleryPosts) { post ->
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(90.dp)
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                        .background(MiaubertoBg)
+                                                        .border(1.dp, MiaubertoBorder, RoundedCornerShape(8.dp))
+                                                ) {
+                                                    if (post.mediaType == "image") {
+                                                        val bmp = decodeBase64ToBitmap(post.mediaBase64)
+                                                        if (bmp != null) {
+                                                            Image(
+                                                                bitmap = bmp.asImageBitmap(),
+                                                                contentDescription = "Foto galería",
+                                                                modifier = Modifier.fillMaxSize(),
+                                                                contentScale = ContentScale.Crop
+                                                            )
+                                                        }
+                                                    } else if (post.mediaType == "video") {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .fillMaxSize()
+                                                                .background(Color.Black),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Text("🎬 Video", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             } else {
                                 Surface(
@@ -949,7 +1031,7 @@ fun MiaubertoMainScreen(
                 }
             }
 
-            if (viewedProfileUid == null) {
+            if (viewedProfileUid == null && selectedTab == 0) {
                 item {
                     if (currentUser.isMuted) {
                         Card(
@@ -1017,7 +1099,6 @@ fun MiaubertoMainScreen(
                                     )
                                 }
 
-                                // VISTA PREVIA DE MULTIMEDIA SELECCIONADA O GRABADA
                                 if (selectedMediaType != null) {
                                     Spacer(modifier = Modifier.height(10.dp))
                                     Surface(
@@ -1032,8 +1113,8 @@ fun MiaubertoMainScreen(
                                         ) {
                                             Text(
                                                 text = when (selectedMediaType) {
-                                                    "image" -> "🖼️ Imagen lista para adjuntar"
-                                                    "video" -> "🎬 Video listo para adjuntar"
+                                                    "image" -> "🖼️ Imagen lista para la galería"
+                                                    "video" -> "🎬 Video listo para la galería"
                                                     "music" -> "🎵 Música lista para adjuntar"
                                                     "audio" -> if (isRecordingAudio) "🔴 Grabando nota de voz..." else "🎙️ Nota de voz grabada"
                                                     else -> "📁 Archivo adjunto"
@@ -1078,7 +1159,6 @@ fun MiaubertoMainScreen(
                                 Divider(color = MiaubertoBorder, thickness = 0.8.dp)
                                 Spacer(modifier = Modifier.height(6.dp))
 
-                                // BOTONES MULTIMEDIA (IMAGEN, VIDEO, MÚSICA, MICRÓFONO)
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -1201,16 +1281,18 @@ fun MiaubertoMainScreen(
                 }
             }
 
-            items(displayedPosts) { post ->
-                PostItemCard(
-                    post = post,
-                    currentUser = currentUser,
-                    db = db,
-                    context = context,
-                    onAuthorClick = { uid -> viewedProfileUid = uid },
-                    onModClick = { p -> selectedPostForMod = p },
-                    onCommentClick = { postId -> activeCommentPostId = postId }
-                )
+            if (selectedTab == 0) {
+                items(displayedPosts) { post ->
+                    PostItemCard(
+                        post = post,
+                        currentUser = currentUser,
+                        db = db,
+                        context = context,
+                        onAuthorClick = { uid -> viewedProfileUid = uid },
+                        onModClick = { p -> selectedPostForMod = p },
+                        onCommentClick = { postId -> activeCommentPostId = postId }
+                    )
+                }
             }
         }
     }
@@ -1693,7 +1775,6 @@ fun PostItemCard(
                 }
             }
 
-            // RENDERIZADO DE CONTENIDO MULTIMEDIA EN LA PUBLICACIÓN
             if (!post.mediaBase64.isNullOrEmpty()) {
                 Spacer(modifier = Modifier.height(10.dp))
                 when (post.mediaType) {
@@ -1856,7 +1937,7 @@ fun PostItemCard(
                         }
                 ) {
                     Row(
-                        horizontalArrangement = ContentScale.None,
+                        horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(vertical = 8.dp)
                     ) {
