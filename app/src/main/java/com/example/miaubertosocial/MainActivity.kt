@@ -1229,15 +1229,15 @@ fun MiaubertoMainScreen(
                             Text("Perfil Privado 🔒", color = MiaubertoTextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             Text("Oculta tus publicaciones en tu muro", color = MiaubertoTextSecondary, fontSize = 11.sp)
                         }
-                        Switch(
-                            checked = editIsPrivate,
-                            onCheckedChange = { editIsPrivate = it },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = MiaubertoRed,
-                                unfocusedTrackColor = MiaubertoBorder
-                            )
-                        )
+                       Switch(
+    checked = editIsPrivate,
+    onCheckedChange = { editIsPrivate = it },
+    colors = SwitchDefaults.colors(
+        checkedThumbColor = Color.White,
+        checkedTrackColor = MiaubertoRed,
+        uncheckedTrackColor = MiaubertoBorder
+    )
+)
                     }
 
                     if (!currentUser.isAdmin) {
