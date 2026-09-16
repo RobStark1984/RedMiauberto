@@ -71,6 +71,14 @@ data class UserProfile(
     val isMuted: Boolean = false
 )
 
+data class PrivateWall(
+    val id: String = "",
+    val name: String = "",
+    val ownerUid: String = "",
+    val ownerName: String = "",
+    val membersEmails: List<String> = emptyList()
+)
+
 data class Comment(
     val id: String = "",
     val authorName: String = "",
@@ -87,6 +95,7 @@ data class Post(
     val avatarBase64: String? = null,
     val content: String,
     val postImageBase64: String? = null,
+    val wallId: String = "global",
     val timestamp: String,
     val likesList: List<String> = emptyList(),
     val dislikesList: List<String> = emptyList(),
@@ -530,6 +539,16 @@ fun MiaubertoMainScreen(
     val auth = remember { FirebaseAuth.getInstance() }
     val context = LocalContext.current
 
+    var myWalls by remember { mutableStateOf<List<PrivateWall>>(emptyList()) }
+    var activeWallId by remember { mutableStateOf("global") }
+    var activeWallName by remember { mutableStateOf("Muro General") }
+
+    var showCreateWallModal by remember { mutableStateOf(false) }
+    var newWallNameInput by remember { mutableStateOf("") }
+    
+    var showInviteMemberModal by remember { mutableStateOf(false) }
+    var inviteEmailInput by remember { mutableStateOf("") }
+
     var posts by remember { mutableStateOf<List<Post>>(emptyList()) }
     var newPostContentText by remember { mutableStateOf("") }
     var selectedPostImageUri by remember { mutableStateOf<Uri?>(null) }
@@ -561,13 +580,36 @@ fun MiaubertoMainScreen(
         editAvatarUri = uri
     }
 
-    LaunchedEffect(Unit) {
-        db.collection("app_settings").document("config").get().addOnSuccessListener { d ->
-            coAdminEmailInput = d.getString("coAdminEmail") ?: ""
-        }
+    // Escuchar Muros Privados a los que tiene acceso el usuario
+    LaunchedEffect(currentUser.email) {
+        db.collection("walls")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null) return@addSnapshotListener
+                val userEmail = currentUser.email.lowercase().trim()
+                
+                val userWalls = snapshot.documents.mapNotNull { doc ->
+                    val ownerUid = doc.getString("ownerUid") ?: ""
+                    val members = doc.get("membersEmails") as? List<String> ?: emptyList()
+                    val lowerMembers = members.map { it.lowercase().trim() }
+                    
+                    if (ownerUid == currentUser.uid || lowerMembers.contains(userEmail) || currentUser.isAdmin) {
+                        PrivateWall(
+                            id = doc.id,
+                            name = doc.getString("name") ?: "Muro Privado",
+                            ownerUid = ownerUid,
+                            ownerName = doc.getString("ownerName") ?: "Michi",
+                            membersEmails = members
+                        )
+                    } else null
+                }
+                myWalls = userWalls
+            }
+    }
 
+    // Escuchar Publicaciones del Muro Seleccionado
+    LaunchedEffect(activeWallId) {
         db.collection("posts")
-            .orderBy("createdAt", Query.Direction.DESCENDING)
+            .whereEqualTo("wallId", activeWallId)
             .addSnapshotListener { snapshot, error ->
                 if (error != null || snapshot == null) return@addSnapshotListener
 
@@ -582,6 +624,7 @@ fun MiaubertoMainScreen(
                         avatarBase64 = doc.getString("avatarBase64"),
                         content = doc.getString("content") ?: "",
                         postImageBase64 = doc.getString("postImageBase64"),
+                        wallId = doc.getString("wallId") ?: "global",
                         timestamp = "Hace un momento",
                         likesList = likesList,
                         dislikesList = dislikesList,
@@ -678,7 +721,7 @@ fun MiaubertoMainScreen(
                         viewedProfileUid = null
                     },
                     icon = { Text("🌐", fontSize = 18.sp) },
-                    label = { Text("Muro General", fontSize = 11.sp, color = if (selectedTab == 0 && viewedProfileUid == null) MiaubertoRed else MiaubertoTextSecondary) }
+                    label = { Text("Muros", fontSize = 11.sp, color = if (selectedTab == 0 && viewedProfileUid == null) MiaubertoRed else MiaubertoTextSecondary) }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 1 && viewedProfileUid == null,
@@ -706,6 +749,93 @@ fun MiaubertoMainScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            // SECTOR DE SELECCIÓN Y CREACIÓN DE MUROS PRIVADOS
+            if (selectedTab == 0 && viewedProfileUid == null) {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, MiaubertoBorder, RoundedCornerShape(14.dp))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "🔒 Muro Actual: $activeWallName",
+                                    color = MiaubertoGold,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+
+                                Button(
+                                    onClick = { showCreateWallModal = true },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MiaubertoDarkBtn),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("➕ Crear Muro", fontSize = 11.sp, color = MiaubertoTextPrimary)
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                FilterChip(
+                                    selected = activeWallId == "global",
+                                    onClick = {
+                                        activeWallId = "global"
+                                        activeWallName = "Muro General"
+                                    },
+                                    label = { Text("🌐 General", fontSize = 12.sp) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MiaubertoRed,
+                                        selectedLabelColor = Color.White,
+                                        containerColor = MiaubertoBg,
+                                        labelColor = MiaubertoTextSecondary
+                                    )
+                                )
+
+                                myWalls.forEach { wall ->
+                                    FilterChip(
+                                        selected = activeWallId == wall.id,
+                                        onClick = {
+                                            activeWallId = wall.id
+                                            activeWallName = wall.name
+                                        },
+                                        label = { Text("🔒 ${wall.name}", fontSize = 12.sp) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = MiaubertoGold,
+                                            selectedLabelColor = Color.Black,
+                                            containerColor = MiaubertoBg,
+                                            labelColor = MiaubertoTextSecondary
+                                        )
+                                    )
+                                }
+                            }
+
+                            if (activeWallId != "global") {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End
+                                ) {
+                                    TextButton(onClick = { showInviteMemberModal = true }) {
+                                        Text("✉️ Invitar Amigo a este Muro", color = MiaubertoGold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             if (selectedTab == 1 || viewedProfileUid != null) {
                 item {
                     val targetUid = viewedProfileUid ?: currentUser.uid
@@ -830,7 +960,7 @@ fun MiaubertoMainScreen(
                                     shape = RoundedCornerShape(20.dp)
                                 ) {
                                     Text(
-                                        text = "📝 ${displayedPosts.size} Publicaciones en su Muro",
+                                        text = "📝 ${displayedPosts.size} Publicaciones en este Muro",
                                         color = MiaubertoRed,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
@@ -916,7 +1046,7 @@ fun MiaubertoMainScreen(
                                     OutlinedTextField(
                                         value = newPostContentText,
                                         onValueChange = { newPostContentText = it },
-                                        placeholder = { Text("¿Qué plan malvado trama hoy, ${currentUser.name.split(" ")[0]}?", color = MiaubertoTextSecondary, fontSize = 13.sp) },
+                                        placeholder = { Text("Publicar en $activeWallName...", color = MiaubertoTextSecondary, fontSize = 13.sp) },
                                         modifier = Modifier
                                             .weight(1f)
                                             .heightIn(min = 50.dp, max = 110.dp),
@@ -976,6 +1106,7 @@ fun MiaubertoMainScreen(
                                                     "avatarBase64" to currentUser.avatarBase64,
                                                     "content" to newPostContentText,
                                                     "postImageBase64" to imageBase64,
+                                                    "wallId" to activeWallId,
                                                     "likesList" to emptyList<String>(),
                                                     "dislikesList" to emptyList<String>(),
                                                     "commentsCount" to 0,
@@ -1021,6 +1152,109 @@ fun MiaubertoMainScreen(
                 )
             }
         }
+    }
+
+    // MODAL DE CREAR MURO PRIVADO
+    if (showCreateWallModal) {
+        AlertDialog(
+            onDismissRequest = { showCreateWallModal = false },
+            title = { Text("🔒 Crear Muro Privado", fontWeight = FontWeight.Bold, color = MiaubertoGold) },
+            text = {
+                Column {
+                    Text("Solo las personas que tú invites podrán ver las publicaciones de este muro.", color = MiaubertoTextSecondary, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = newWallNameInput,
+                        onValueChange = { newWallNameInput = it },
+                        label = { Text("Nombre del Muro", color = MiaubertoTextSecondary) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = MiaubertoTextPrimary,
+                            unfocusedTextColor = MiaubertoTextPrimary,
+                            focusedBorderColor = MiaubertoGold,
+                            unfocusedBorderColor = MiaubertoBorder
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newWallNameInput.isNotBlank()) {
+                            val wallData = hashMapOf(
+                                "name" to newWallNameInput.trim(),
+                                "ownerUid" to currentUser.uid,
+                                "ownerName" to currentUser.name,
+                                "membersEmails" to listOf(currentUser.email.lowercase().trim()),
+                                "createdAt" to System.currentTimeMillis()
+                            )
+                            db.collection("walls").add(wallData)
+                            newWallNameInput = ""
+                            showCreateWallModal = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MiaubertoGold)
+                ) {
+                    Text("Crear Muro", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreateWallModal = false }) {
+                    Text("Cancelar", color = MiaubertoTextSecondary)
+                }
+            },
+            containerColor = MiaubertoCardBg
+        )
+    }
+
+    // MODAL DE INVITAR MIEMBRO A MURO PRIVADO
+    if (showInviteMemberModal) {
+        AlertDialog(
+            onDismissRequest = { showInviteMemberModal = false },
+            title = { Text("✉️ Invitar a $activeWallName", fontWeight = FontWeight.Bold, color = MiaubertoGold) },
+            text = {
+                Column {
+                    Text("Ingresa el correo electrónico del michi al que quieres invitar a este muro:", color = MiaubertoTextSecondary, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = inviteEmailInput,
+                        onValueChange = { inviteEmailInput = it },
+                        label = { Text("Correo del usuario", color = MiaubertoTextSecondary) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = MiaubertoTextPrimary,
+                            unfocusedTextColor = MiaubertoTextPrimary,
+                            focusedBorderColor = MiaubertoGold,
+                            unfocusedBorderColor = MiaubertoBorder
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val cleanInviteEmail = inviteEmailInput.trim().lowercase()
+                        if (cleanInviteEmail.isNotBlank()) {
+                            db.collection("walls").document(activeWallId)
+                                .update("membersEmails", FieldValue.arrayUnion(cleanInviteEmail))
+                            inviteEmailInput = ""
+                            showInviteMemberModal = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MiaubertoGold)
+                ) {
+                    Text("Invitar Michi", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showInviteMemberModal = false }) {
+                    Text("Cancelar", color = MiaubertoTextSecondary)
+                }
+            },
+            containerColor = MiaubertoCardBg
+        )
     }
 
     if (selectedPostForMod != null) {
@@ -1642,3 +1876,4 @@ fun PostItemCard(
         }
     }
 }
+
