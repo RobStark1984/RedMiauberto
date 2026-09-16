@@ -973,28 +973,45 @@ fun MiaubertoMainScreen(
                 }
             }
 
+           // COMPROBACIÓN DE PRIVACIDAD Y LISTADO DE POSTS
             val targetUid = viewedProfileUid ?: if (selectedTab == 1) currentUser.uid else null
-            var targetIsPrivate by remember(targetUid) { mutableStateOf(false) }
-
+            
             if (targetUid != null && targetUid != currentUser.uid) {
+                var targetIsPrivate by remember(targetUid) { mutableStateOf(false) }
                 LaunchedEffect(targetUid) {
                     db.collection("users").document(targetUid).get().addOnSuccessListener { d ->
                         targetIsPrivate = d.getBoolean("isPrivate") ?: false
                     }
                 }
+
+                val isAllowedToSeePosts = currentUser.isAdmin || !targetIsPrivate
+
+                if (isAllowedToSeePosts) {
+                    items(displayedPosts) { post ->
+                        PostItemCard(
+                            post = post,
+                            currentUser = currentUser,
+                            db = db,
+                            context = context,
+                            onAuthorClick = { uid -> viewedProfileUid = uid },
+                            onModClick = { p -> selectedPostForMod = p },
+                            onCommentClick = { postId -> activeCommentPostId = postId }
+                        )
+                    }
+                }
             } else {
-                targetIsPrivate = false
-            }
-
-            val isAllowedToSeePosts = targetUid == null || targetUid == currentUser.uid || currentUser.isAdmin || !targetIsPrivate
-
-            if (isAllowedToSeePosts) {
                 items(displayedPosts) { post ->
-                    val detectedYoutubeUrl = extractYoutubeUrl(post.content)
-                    val userHasLiked = post.likesList.contains(currentUser.uid)
-                    val userHasDisliked = post.dislikesList.contains(currentUser.uid)
-                    val postImageBitmap = decodeBase64ToBitmap(post.postImageBase64)
-                    val authorAvatarBitmap = decodeBase64ToBitmap(post.avatarBase64)
+                    PostItemCard(
+                        post = post,
+                        currentUser = currentUser,
+                        db = db,
+                        context = context,
+                        onAuthorClick = { uid -> viewedProfileUid = uid },
+                        onModClick = { p -> selectedPostForMod = p },
+                        onCommentClick = { postId -> activeCommentPostId = postId }
+                    )
+                }
+            }
 
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
