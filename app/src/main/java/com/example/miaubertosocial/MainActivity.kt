@@ -1617,3 +1617,265 @@ fun MiaubertoMainScreen(
         )
     }
 }
+@Composable
+fun PostItemCard(
+    post: Post,
+    currentUser: UserProfile,
+    db: FirebaseFirestore,
+    context: Context,
+    onAuthorClick: (String) -> Unit,
+    onModClick: (Post) -> Unit,
+    onCommentClick: (String) -> Unit
+) {
+    val detectedYoutubeUrl = remember(post.content) { extractYoutubeUrl(post.content) }
+    val userHasLiked = post.likesList.contains(currentUser.uid)
+    val userHasDisliked = post.dislikesList.contains(currentUser.uid)
+    val postImageBitmap = remember(post.postImageBase64) { decodeBase64ToBitmap(post.postImageBase64) }
+    val authorAvatarBitmap = remember(post.avatarBase64) { decodeBase64ToBitmap(post.avatarBase64) }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, MiaubertoBorder, RoundedCornerShape(14.dp))
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(MiaubertoBg)
+                        .border(1.dp, MiaubertoRed, CircleShape)
+                        .clickable {
+                            if (post.authorUid.isNotBlank()) {
+                                onAuthorClick(post.authorUid)
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (authorAvatarBitmap != null) {
+                        Image(
+                            bitmap = authorAvatarBitmap.asImageBitmap(),
+                            contentDescription = "Avatar",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Text("😼", fontSize = 20.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable {
+                            if (post.authorUid.isNotBlank()) {
+                                onAuthorClick(post.authorUid)
+                            }
+                        }
+                ) {
+                    Text(
+                        text = post.authorName,
+                        color = MiaubertoTextPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "${post.username} • ${post.timestamp} 🐾",
+                        color = MiaubertoTextSecondary,
+                        fontSize = 12.sp
+                    )
+                }
+
+                if (currentUser.isAdmin) {
+                    IconButton(onClick = { onModClick(post) }) {
+                        Text("🛡️ Mod", color = MiaubertoGold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (post.content.isNotBlank()) {
+                Text(
+                    text = post.content,
+                    color = MiaubertoTextPrimary,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+            }
+
+            if (detectedYoutubeUrl != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                val embedUrl = getEmbedYoutubeUrl(detectedYoutubeUrl)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(210.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.Black)
+                ) {
+                    AndroidView(
+                        factory = { ctx ->
+                            WebView(ctx).apply {
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                webChromeClient = WebChromeClient()
+                                webViewClient = WebViewClient()
+                                loadUrl(embedUrl)
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+
+            if (postImageBitmap != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Image(
+                    bitmap = postImageBitmap.asImageBitmap(),
+                    contentDescription = "Imagen de publicación",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 350.dp)
+                        .clip(RoundedCornerShape(10.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "😼 ${post.likesList.size} Aprueban  •  😾 ${post.dislikesList.size} Reprueban",
+                    color = MiaubertoTextSecondary,
+                    fontSize = 11.sp
+                )
+                Text(
+                    text = "💬 ${post.commentsCount} Murmullos",
+                    color = MiaubertoTextSecondary,
+                    fontSize = 11.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Divider(color = MiaubertoBorder, thickness = 0.8.dp)
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Surface(
+                    color = if (userHasLiked) MiaubertoRed.copy(alpha = 0.2f) else MiaubertoDarkBtn,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable {
+                            val postRef = db.collection("posts").document(post.id)
+                            if (userHasLiked) {
+                                postRef.update("likesList", FieldValue.arrayRemove(currentUser.uid))
+                            } else {
+                                postRef.update(
+                                    "likesList", FieldValue.arrayUnion(currentUser.uid),
+                                    "dislikesList", FieldValue.arrayRemove(currentUser.uid)
+                                )
+                            }
+                        }
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = "🐾 Aprobar",
+                            color = if (userHasLiked) MiaubertoRed else MiaubertoTextSecondary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Surface(
+                    color = if (userHasDisliked) Color(0xFF7F1D1D) else MiaubertoDarkBtn,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable {
+                            val postRef = db.collection("posts").document(post.id)
+                            if (userHasDisliked) {
+                                postRef.update("dislikesList", FieldValue.arrayRemove(currentUser.uid))
+                            } else {
+                                postRef.update(
+                                    "dislikesList", FieldValue.arrayUnion(currentUser.uid),
+                                    "likesList", FieldValue.arrayRemove(currentUser.uid)
+                                )
+                            }
+                        }
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = "😾 Gruñir",
+                            color = if (userHasDisliked) Color(0xFFEF4444) else MiaubertoTextSecondary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Surface(
+                    color = MiaubertoDarkBtn,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onCommentClick(post.id) }
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    ) {
+                        Text("💬 Opinar", color = MiaubertoTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Surface(
+                    color = MiaubertoDarkBtn,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable {
+                            val shareIntent = Intent().apply {
+                                action = Intent.ACTION_SEND
+                                putExtra(Intent.EXTRA_TEXT, "Comunicado oficial de ${post.authorName} en Miauberto Red:\n\n\"${post.content}\"")
+                                type = "text/plain"
+                            }
+                            context.startActivity(Intent.createChooser(shareIntent, "Difundir comunicado"))
+                        }
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    ) {
+                        Text("↗️ Difundir", color = MiaubertoTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
