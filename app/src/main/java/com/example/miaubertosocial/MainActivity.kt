@@ -24,6 +24,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -94,7 +97,7 @@ data class Post(
     val avatarBase64: String? = null,
     val content: String,
     val postImageBase64: String? = null,
-    val mediaType: String? = null, // "image", "video", "audio", "music"
+    val mediaType: String? = null, // "image", "audio"
     val mediaBase64: String? = null,
     val timestamp: String,
     val likesList: List<String> = emptyList(),
@@ -113,7 +116,7 @@ fun decodeBase64ToBitmap(base64Str: String?): Bitmap? {
     }
 }
 
-fun uriToBase64(context: Context, uri: Uri, maxSize: Int = 400): String? {
+fun uriToBase64(context: Context, uri: Uri, maxSize: Int = 300): String? {
     return try {
         val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
         val originalBitmap = BitmapFactory.decodeStream(inputStream) ?: return null
@@ -124,20 +127,9 @@ fun uriToBase64(context: Context, uri: Uri, maxSize: Int = 400): String? {
         
         val scaledBitmap = Bitmap.createScaledBitmap(originalBitmap, width, height, true)
         val byteArrayOutputStream = ByteArrayOutputStream()
-        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 60, byteArrayOutputStream)
+        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 50, byteArrayOutputStream)
         val byteArray = byteArrayOutputStream.toByteArray()
         "data:image/jpeg;base64," + Base64.encodeToString(byteArray, Base64.NO_WRAP)
-    } catch (e: Exception) {
-        null
-    }
-}
-
-fun genericUriToBase64(context: Context, uri: Uri, mimePrefix: String): String? {
-    return try {
-        val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-        val bytes = inputStream.readBytes()
-        inputStream.close()
-        "$mimePrefix," + Base64.encodeToString(bytes, Base64.NO_WRAP)
     } catch (e: Exception) {
         null
     }
@@ -148,6 +140,7 @@ fun fileToBase64(file: File, mimePrefix: String): String? {
         val inputStream = FileInputStream(file)
         val bytes = inputStream.readBytes()
         inputStream.close()
+        if (bytes.size > 800 * 1024) return null
         "$mimePrefix," + Base64.encodeToString(bytes, Base64.NO_WRAP)
     } catch (e: Exception) {
         null
@@ -564,9 +557,7 @@ fun MiaubertoMainScreen(
     var posts by remember { mutableStateOf<List<Post>>(emptyList()) }
     var newPostContentText by remember { mutableStateOf("") }
     
-    // ESTADOS MULTIMEDIA PARA PUBLICACIONES
-    var selectedMediaUri by remember { mutableStateOf<Uri?>(null) }
-    var selectedMediaType by remember { mutableStateOf<String?>(null) } // "image", "video", "audio", "music"
+    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var recordedAudioFile by remember { mutableStateOf<File?>(null) }
     var isRecordingAudio by remember { mutableStateOf(false) }
     var mediaRecorder by remember { mutableStateOf<MediaRecorder?>(null) }
@@ -587,25 +578,9 @@ fun MiaubertoMainScreen(
 
     var selectedPostForMod by remember { mutableStateOf<Post?>(null) }
 
-    // LAUNCHERS PARA ARCHIVOS MULTIMEDIA
     val imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
-            selectedMediaUri = uri
-            selectedMediaType = "image"
-            recordedAudioFile = null
-        }
-    }
-    val videoPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) {
-            selectedMediaUri = uri
-            selectedMediaType = "video"
-            recordedAudioFile = null
-        }
-    }
-    val musicPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) {
-            selectedMediaUri = uri
-            selectedMediaType = "music"
+            selectedImageUri = uri
             recordedAudioFile = null
         }
     }
@@ -630,8 +605,7 @@ fun MiaubertoMainScreen(
                 mediaRecorder = recorder
                 recordedAudioFile = audioFile
                 isRecordingAudio = true
-                selectedMediaType = "audio"
-                selectedMediaUri = null
+                selectedImageUri = null
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -797,6 +771,7 @@ fun MiaubertoMainScreen(
                     val isMyOwn = targetUid == currentUser.uid
 
                     var targetProfile by remember(targetUid) { mutableStateOf<UserProfile?>(if (isMyOwn) currentUser else null) }
+                    var profileSubTab by remember(targetUid) { mutableStateOf(0) }
 
                     LaunchedEffect(targetUid) {
                         if (!isMyOwn) {
@@ -907,20 +882,87 @@ fun MiaubertoMainScreen(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(10.dp))
+                            Spacer(modifier = Modifier.height(14.dp))
 
                             if (canViewPrivateContent) {
-                                Surface(
-                                    color = MiaubertoDarkBtn,
-                                    shape = RoundedCornerShape(20.dp)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(MiaubertoBg, RoundedCornerShape(10.dp))
+                                        .padding(4.dp),
+                                    horizontalArrangement = Arrangement.SpaceEvenly
                                 ) {
+                                    Button(
+                                        onClick = { profileSubTab = 0 },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (profileSubTab == 0) MiaubertoRed else Color.Transparent
+                                        ),
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text("📝 Muro", fontSize = 12.sp, color = if (profileSubTab == 0) Color.White else MiaubertoTextSecondary, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    Button(
+                                        onClick = { profileSubTab = 1 },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (profileSubTab == 1) MiaubertoRed else Color.Transparent
+                                        ),
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text("🖼️ Galería", fontSize = 12.sp, color = if (profileSubTab == 1) Color.White else MiaubertoTextSecondary, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                if (profileSubTab == 0) {
                                     Text(
                                         text = "📝 ${displayedPosts.size} Publicaciones en su Muro",
-                                        color = MiaubertoRed,
+                                        color = MiaubertoTextSecondary,
                                         fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                        fontWeight = FontWeight.Medium
                                     )
+                                } else {
+                                    val galleryPosts = displayedPosts.filter { 
+                                        it.mediaType == "image" && !it.mediaBase64.isNullOrEmpty() 
+                                    }
+
+                                    if (galleryPosts.isEmpty()) {
+                                        Box(modifier = Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
+                                            Text("No hay fotos en la galería aún 🐾", color = MiaubertoTextSecondary, fontSize = 12.sp)
+                                        }
+                                    } else {
+                                        LazyVerticalGrid(
+                                            columns = GridCells.Fixed(3),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(280.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            items(galleryPosts) { post ->
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(90.dp)
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                        .background(MiaubertoBg)
+                                                        .border(1.dp, MiaubertoBorder, RoundedCornerShape(8.dp))
+                                                ) {
+                                                    val bmp = decodeBase64ToBitmap(post.mediaBase64)
+                                                    if (bmp != null) {
+                                                        Image(
+                                                            bitmap = bmp.asImageBitmap(),
+                                                            contentDescription = "Foto galería",
+                                                            modifier = Modifier.fillMaxSize(),
+                                                            contentScale = ContentScale.Crop
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             } else {
                                 Surface(
@@ -949,7 +991,7 @@ fun MiaubertoMainScreen(
                 }
             }
 
-            if (viewedProfileUid == null) {
+            if (viewedProfileUid == null && selectedTab == 0) {
                 item {
                     if (currentUser.isMuted) {
                         Card(
@@ -1017,8 +1059,7 @@ fun MiaubertoMainScreen(
                                     )
                                 }
 
-                                // VISTA PREVIA DE MULTIMEDIA SELECCIONADA O GRABADA
-                                if (selectedMediaType != null) {
+                                if (selectedImageUri != null || recordedAudioFile != null) {
                                     Spacer(modifier = Modifier.height(10.dp))
                                     Surface(
                                         color = MiaubertoDarkBtn,
@@ -1031,13 +1072,7 @@ fun MiaubertoMainScreen(
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
                                             Text(
-                                                text = when (selectedMediaType) {
-                                                    "image" -> "🖼️ Imagen lista para adjuntar"
-                                                    "video" -> "🎬 Video listo para adjuntar"
-                                                    "music" -> "🎵 Música lista para adjuntar"
-                                                    "audio" -> if (isRecordingAudio) "🔴 Grabando nota de voz..." else "🎙️ Nota de voz grabada"
-                                                    else -> "📁 Archivo adjunto"
-                                                },
+                                                text = if (recordedAudioFile != null) (if (isRecordingAudio) "🔴 Grabando nota de voz..." else "🎙️ Nota de voz grabada") else "🖼️ Imagen lista para adjuntar",
                                                 color = if (isRecordingAudio) MiaubertoRed else MiaubertoTextPrimary,
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold
@@ -1063,8 +1098,7 @@ fun MiaubertoMainScreen(
                                                 }
                                             } else {
                                                 TextButton(onClick = {
-                                                    selectedMediaUri = null
-                                                    selectedMediaType = null
+                                                    selectedImageUri = null
                                                     recordedAudioFile = null
                                                 }) {
                                                     Text("Quitar ❌", color = Color(0xFFEF4444), fontSize = 11.sp)
@@ -1078,7 +1112,6 @@ fun MiaubertoMainScreen(
                                 Divider(color = MiaubertoBorder, thickness = 0.8.dp)
                                 Spacer(modifier = Modifier.height(6.dp))
 
-                                // BOTONES MULTIMEDIA (IMAGEN, VIDEO, MÚSICA, MICRÓFONO)
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -1086,12 +1119,6 @@ fun MiaubertoMainScreen(
                                 ) {
                                     TextButton(onClick = { imagePickerLauncher.launch("image/*") }) {
                                         Text("🖼️ Foto", color = MiaubertoTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                    TextButton(onClick = { videoPickerLauncher.launch("video/*") }) {
-                                        Text("🎬 Video", color = MiaubertoTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                    TextButton(onClick = { musicPickerLauncher.launch("audio/*") }) {
-                                        Text("🎵 Música", color = MiaubertoTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     }
                                     TextButton(onClick = {
                                         val permissionCheck = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
@@ -1105,7 +1132,7 @@ fun MiaubertoMainScreen(
                                                     MediaRecorder()
                                                 }.apply {
                                                     setAudioSource(MediaRecorder.AudioSource.MIC)
-                                                    setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
+                                                    setOutputFormat(MediaRecorder.AudioFormat.THREE_GPP)
                                                     setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
                                                     setOutputFile(audioFile.absolutePath)
                                                     prepare()
@@ -1114,8 +1141,7 @@ fun MiaubertoMainScreen(
                                                 mediaRecorder = recorder
                                                 recordedAudioFile = audioFile
                                                 isRecordingAudio = true
-                                                selectedMediaType = "audio"
-                                                selectedMediaUri = null
+                                                selectedImageUri = null
                                             } catch (e: Exception) {
                                                 e.printStackTrace()
                                             }
@@ -1123,7 +1149,7 @@ fun MiaubertoMainScreen(
                                             micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                                         }
                                     }) {
-                                        Text("🎙️ Grabar", color = if (isRecordingAudio) MiaubertoRed else MiaubertoTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text("🎙️ Grabar Audio", color = if (isRecordingAudio) MiaubertoRed else MiaubertoTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
 
@@ -1131,31 +1157,18 @@ fun MiaubertoMainScreen(
 
                                 Button(
                                     onClick = {
-                                        if ((newPostContentText.isNotBlank() || selectedMediaType != null) && !isPosting && !isRecordingAudio) {
+                                        if ((newPostContentText.isNotBlank() || selectedImageUri != null || recordedAudioFile != null) && !isPosting && !isRecordingAudio) {
                                             isPosting = true
 
                                             var mediaBase64: String? = null
-                                            when (selectedMediaType) {
-                                                "image" -> {
-                                                    if (selectedMediaUri != null) {
-                                                        mediaBase64 = uriToBase64(context, selectedMediaUri!!, 500)
-                                                    }
-                                                }
-                                                "video" -> {
-                                                    if (selectedMediaUri != null) {
-                                                        mediaBase64 = genericUriToBase64(context, selectedMediaUri!!, "data:video/mp4;base64")
-                                                    }
-                                                }
-                                                "music" -> {
-                                                    if (selectedMediaUri != null) {
-                                                        mediaBase64 = genericUriToBase64(context, selectedMediaUri!!, "data:audio/mp3;base64")
-                                                    }
-                                                }
-                                                "audio" -> {
-                                                    if (recordedAudioFile != null) {
-                                                        mediaBase64 = fileToBase64(recordedAudioFile!!, "data:audio/3gpp;base64")
-                                                    }
-                                                }
+                                            var mediaType: String? = null
+
+                                            if (selectedImageUri != null) {
+                                                mediaBase64 = uriToBase64(context, selectedImageUri!!, 300)
+                                                mediaType = "image"
+                                            } else if (recordedAudioFile != null) {
+                                                mediaBase64 = fileToBase64(recordedAudioFile!!, "data:audio/3gpp;base64")
+                                                mediaType = "audio"
                                             }
 
                                             val newPostMap = hashMapOf(
@@ -1164,7 +1177,7 @@ fun MiaubertoMainScreen(
                                                 "username" to currentUser.username,
                                                 "avatarBase64" to currentUser.avatarBase64,
                                                 "content" to newPostContentText,
-                                                "mediaType" to selectedMediaType,
+                                                "mediaType" to mediaType,
                                                 "mediaBase64" to mediaBase64,
                                                 "likesList" to emptyList<String>(),
                                                 "dislikesList" to emptyList<String>(),
@@ -1174,8 +1187,7 @@ fun MiaubertoMainScreen(
                                             db.collection("posts").add(newPostMap)
                                                 .addOnSuccessListener {
                                                     newPostContentText = ""
-                                                    selectedMediaUri = null
-                                                    selectedMediaType = null
+                                                    selectedImageUri = null
                                                     recordedAudioFile = null
                                                     isPosting = false
                                                 }
@@ -1187,7 +1199,7 @@ fun MiaubertoMainScreen(
                                     modifier = Modifier.fillMaxWidth().height(42.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = MiaubertoRed),
                                     shape = RoundedCornerShape(8.dp),
-                                    enabled = !isPosting && !isRecordingAudio && (newPostContentText.isNotBlank() || selectedMediaType != null)
+                                    enabled = !isPosting && !isRecordingAudio && (newPostContentText.isNotBlank() || selectedImageUri != null || recordedAudioFile != null)
                                 ) {
                                     if (isPosting) {
                                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp))
@@ -1201,16 +1213,18 @@ fun MiaubertoMainScreen(
                 }
             }
 
-            items(displayedPosts) { post ->
-                PostItemCard(
-                    post = post,
-                    currentUser = currentUser,
-                    db = db,
-                    context = context,
-                    onAuthorClick = { uid -> viewedProfileUid = uid },
-                    onModClick = { p -> selectedPostForMod = p },
-                    onCommentClick = { postId -> activeCommentPostId = postId }
-                )
+            if (selectedTab == 0) {
+                items(displayedPosts) { post ->
+                    PostItemCard(
+                        post = post,
+                        currentUser = currentUser,
+                        db = db,
+                        context = context,
+                        onAuthorClick = { uid -> viewedProfileUid = uid },
+                        onModClick = { p -> selectedPostForMod = p },
+                        onCommentClick = { postId -> activeCommentPostId = postId }
+                    )
+                }
             }
         }
     }
@@ -1693,7 +1707,6 @@ fun PostItemCard(
                 }
             }
 
-            // RENDERIZADO DE CONTENIDO MULTIMEDIA EN LA PUBLICACIÓN
             if (!post.mediaBase64.isNullOrEmpty()) {
                 Spacer(modifier = Modifier.height(10.dp))
                 when (post.mediaType) {
@@ -1711,31 +1724,7 @@ fun PostItemCard(
                             )
                         }
                     }
-                    "video" -> {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(210.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color.Black)
-                        ) {
-                            AndroidView(
-                                factory = { ctx ->
-                                    WebView(ctx).apply {
-                                        settings.javaScriptEnabled = true
-                                        settings.domStorageEnabled = true
-                                        loadData(
-                                            "<html><body style='margin:0;background:black;display:flex;justify-content:center;align-items:center;height:100vh;'><video controls autoplay style='max-width:100%;max-height:100%;'><source src='${post.mediaBase64}' type='video/mp4'></video></body></html>",
-                                            "text/html",
-                                            "utf-8"
-                                        )
-                                    }
-                                },
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
-                    }
-                    "audio", "music" -> {
+                    "audio" -> {
                         Surface(
                             color = MiaubertoDarkBtn,
                             shape = RoundedCornerShape(10.dp),
@@ -1747,7 +1736,7 @@ fun PostItemCard(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = if (post.mediaType == "audio") "🎙️ Nota de voz del Gremio" else "🎵 Archivo de Música",
+                                    text = "🎙️ Nota de voz del Gremio",
                                     color = MiaubertoTextPrimary,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold
@@ -1856,7 +1845,7 @@ fun PostItemCard(
                         }
                 ) {
                     Row(
-                        horizontalArrangement = ContentScale.None,
+                        horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(vertical = 8.dp)
                     ) {
