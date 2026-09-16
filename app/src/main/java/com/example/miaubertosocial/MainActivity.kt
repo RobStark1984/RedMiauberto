@@ -56,10 +56,13 @@ val MiaubertoTextSecondary = Color(0xFF9CA3AF)
 val MiaubertoBorder = Color(0xFF2A2A34)
 val MiaubertoDarkBtn = Color(0xFF262630)
 
+const val MAIN_ADMIN_EMAIL = "robes2009udg@gmail.com"
+
 data class UserProfile(
     val uid: String = "",
     val name: String = "",
     val username: String = "",
+    val email: String = "",
     val avatarBase64: String? = null,
     val isAdmin: Boolean = false,
     val isPrivate: Boolean = false,
@@ -170,33 +173,42 @@ fun AppNavigationScreen() {
     fun refreshProfile() {
         val user = auth.currentUser
         if (user != null) {
-            db.collection("users").document(user.uid).get()
-                .addOnSuccessListener { doc ->
-                    if (doc.exists()) {
-                        val name = doc.getString("name") ?: "Robespierre"
-                        val username = doc.getString("username") ?: "@admin"
-                        val email = (doc.getString("email") ?: user.email ?: "").lowercase()
-                        val explicitAdmin = doc.getBoolean("isAdmin") ?: false
-                        val isPrivate = doc.getBoolean("isPrivate") ?: false
-                        val isMuted = doc.getBoolean("isMuted") ?: false
-                        
-                        val isMainAdmin = email.contains("rob") || username.contains("robstark") || name.contains("Robespierre")
-                        val isBackupAdmin = email.contains("admin") || email.contains("backup") || email == "admin@miauberto.com"
-                        val isAdminUser = explicitAdmin || isMainAdmin || isBackupAdmin
+            val userEmail = (user.email ?: "").lowercase().trim()
+            
+            // Consultar la configuración global de Co-Administrador
+            db.collection("app_settings").document("config").get()
+                .addOnSuccessListener { configDoc ->
+                    val chosenCoAdminEmail = (configDoc.getString("coAdminEmail") ?: "").lowercase().trim()
 
-                        currentUserProfile = UserProfile(
-                            uid = user.uid,
-                            name = name,
-                            username = username,
-                            avatarBase64 = doc.getString("avatarBase64"),
-                            isAdmin = isAdminUser,
-                            isPrivate = isPrivate,
-                            isMuted = isMuted
-                        )
-                    } else {
-                        currentUserProfile = null
-                    }
-                    isLoadingProfile = false
+                    db.collection("users").document(user.uid).get()
+                        .addOnSuccessListener { doc ->
+                            if (doc.exists()) {
+                                val name = doc.getString("name") ?: "Robespierre"
+                                val username = doc.getString("username") ?: "@admin"
+                                val isPrivate = doc.getBoolean("isPrivate") ?: false
+                                val isMuted = doc.getBoolean("isMuted") ?: false
+                                
+                                // ÚNICAMENTE el correo principal y el co-administrador elegido tienen permisos
+                                val isAdminUser = (userEmail == MAIN_ADMIN_EMAIL.lowercase()) || (userEmail.isNotBlank() && userEmail == chosenCoAdminEmail)
+
+                                currentUserProfile = UserProfile(
+                                    uid = user.uid,
+                                    name = name,
+                                    username = username,
+                                    email = userEmail,
+                                    avatarBase64 = doc.getString("avatarBase64"),
+                                    isAdmin = isAdminUser,
+                                    isPrivate = isPrivate,
+                                    isMuted = isMuted
+                                )
+                            } else {
+                                currentUserProfile = null
+                            }
+                            isLoadingProfile = false
+                        }
+                        .addOnFailureListener {
+                            isLoadingProfile = false
+                        }
                 }
                 .addOnFailureListener {
                     isLoadingProfile = false
@@ -399,36 +411,40 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                         if (isRegisterMode) {
                             val formattedUsername = if (usernameInput.startsWith("@")) usernameInput else "@$usernameInput"
                             val cleanEmail = emailInput.trim().lowercase()
-                            val isDefaultAdmin = cleanEmail.contains("rob") || nameInput.contains("Robespierre") || cleanEmail.contains("admin") || cleanEmail.contains("backup")
                             
                             auth.createUserWithEmailAndPassword(cleanEmail, passwordInput.trim())
                                 .addOnSuccessListener { result ->
                                     val uid = result.user?.uid ?: ""
                                     val avatarBase64 = if (selectedAvatarUri != null) uriToBase64(context, selectedAvatarUri!!, 200) else null
 
-                                    val profile = UserProfile(
-                                        uid = uid,
-                                        name = nameInput.ifBlank { "Robespierre" },
-                                        username = formattedUsername.ifBlank { "@admin" },
-                                        avatarBase64 = avatarBase64,
-                                        isAdmin = isDefaultAdmin,
-                                        isPrivate = false,
-                                        isMuted = false
-                                    )
-                                    val userMap = hashMapOf(
-                                        "name" to profile.name,
-                                        "username" to profile.username,
-                                        "avatarBase64" to profile.avatarBase64,
-                                        "email" to cleanEmail,
-                                        "isAdmin" to isDefaultAdmin,
-                                        "isPrivate" to false,
-                                        "isMuted" to false
-                                    )
-                                    db.collection("users").document(uid).set(userMap)
-                                        .addOnSuccessListener {
-                                            isLoading = false
-                                            onProfileCreated(profile)
-                                        }
+                                    db.collection("app_settings").document("config").get().addOnSuccessListener { configDoc ->
+                                        val chosenCoAdminEmail = (configDoc.getString("coAdminEmail") ?: "").lowercase().trim()
+                                        val isDefaultAdmin = (cleanEmail == MAIN_ADMIN_EMAIL.lowercase()) || (cleanEmail.isNotBlank() && cleanEmail == chosenCoAdminEmail)
+
+                                        val profile = UserProfile(
+                                            uid = uid,
+                                            name = nameInput.ifBlank { "Robespierre" },
+                                            username = formattedUsername.ifBlank { "@admin" },
+                                            email = cleanEmail,
+                                            avatarBase64 = avatarBase64,
+                                            isAdmin = isDefaultAdmin,
+                                            isPrivate = false,
+                                            isMuted = false
+                                        )
+                                        val userMap = hashMapOf(
+                                            "name" to profile.name,
+                                            "username" to profile.username,
+                                            "avatarBase64" to profile.avatarBase64,
+                                            "email" to cleanEmail,
+                                            "isPrivate" to false,
+                                            "isMuted" to false
+                                        )
+                                        db.collection("users").document(uid).set(userMap)
+                                            .addOnSuccessListener {
+                                                isLoading = false
+                                                onProfileCreated(profile)
+                                            }
+                                    }
                                 }
                                 .addOnFailureListener { e ->
                                     isLoading = false
@@ -438,27 +454,33 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                             auth.signInWithEmailAndPassword(emailInput.trim(), passwordInput.trim())
                                 .addOnSuccessListener { result ->
                                     val uid = result.user?.uid ?: ""
-                                    db.collection("users").document(uid).get()
-                                        .addOnSuccessListener { doc ->
-                                            isLoading = false
-                                            val name = doc.getString("name") ?: "Robespierre"
-                                            val username = doc.getString("username") ?: "@admin"
-                                            val cleanEmail = emailInput.trim().lowercase()
-                                            val isAdmin = doc.getBoolean("isAdmin") ?: (cleanEmail.contains("rob") || name.contains("Robespierre") || cleanEmail.contains("admin") || cleanEmail.contains("backup"))
-                                            val isPrivate = doc.getBoolean("isPrivate") ?: false
-                                            val isMuted = doc.getBoolean("isMuted") ?: false
+                                    val cleanEmail = emailInput.trim().lowercase()
 
-                                            val profile = UserProfile(
-                                                uid = uid,
-                                                name = name,
-                                                username = username,
-                                                avatarBase64 = doc.getString("avatarBase64"),
-                                                isAdmin = isAdmin,
-                                                isPrivate = isPrivate,
-                                                isMuted = isMuted
-                                            )
-                                            onProfileCreated(profile)
-                                        }
+                                    db.collection("app_settings").document("config").get().addOnSuccessListener { configDoc ->
+                                        val chosenCoAdminEmail = (configDoc.getString("coAdminEmail") ?: "").lowercase().trim()
+                                        val isDefaultAdmin = (cleanEmail == MAIN_ADMIN_EMAIL.lowercase()) || (cleanEmail.isNotBlank() && cleanEmail == chosenCoAdminEmail)
+
+                                        db.collection("users").document(uid).get()
+                                            .addOnSuccessListener { doc ->
+                                                isLoading = false
+                                                val name = doc.getString("name") ?: "Robespierre"
+                                                val username = doc.getString("username") ?: "@admin"
+                                                val isPrivate = doc.getBoolean("isPrivate") ?: false
+                                                val isMuted = doc.getBoolean("isMuted") ?: false
+
+                                                val profile = UserProfile(
+                                                    uid = uid,
+                                                    name = name,
+                                                    username = username,
+                                                    email = cleanEmail,
+                                                    avatarBase64 = doc.getString("avatarBase64"),
+                                                    isAdmin = isDefaultAdmin,
+                                                    isPrivate = isPrivate,
+                                                    isMuted = isMuted
+                                                )
+                                                onProfileCreated(profile)
+                                            }
+                                    }
                                 }
                                 .addOnFailureListener { e ->
                                     isLoading = false
@@ -521,7 +543,7 @@ fun MiaubertoMainScreen(
     var editNameInput by remember { mutableStateOf(currentUser.name) }
     var editUsernameInput by remember { mutableStateOf(currentUser.username) }
     var editIsPrivate by remember { mutableStateOf(currentUser.isPrivate) }
-    var secretAdminCodeInput by remember { mutableStateOf("") }
+    var coAdminEmailInput by remember { mutableStateOf("") }
     var editAvatarUri by remember { mutableStateOf<Uri?>(null) }
     var isSavingProfile by remember { mutableStateOf(false) }
 
@@ -540,6 +562,10 @@ fun MiaubertoMainScreen(
     }
 
     LaunchedEffect(Unit) {
+        db.collection("app_settings").document("config").get().addOnSuccessListener { d ->
+            coAdminEmailInput = d.getString("coAdminEmail") ?: ""
+        }
+
         db.collection("posts")
             .orderBy("createdAt", Query.Direction.DESCENDING)
             .addSnapshotListener { snapshot, error ->
@@ -681,12 +707,14 @@ fun MiaubertoMainScreen(
                         if (!isMyOwn) {
                             db.collection("users").document(targetUid).get().addOnSuccessListener { d ->
                                 if (d.exists()) {
+                                    val targetEmail = d.getString("email") ?: ""
                                     targetProfile = UserProfile(
                                         uid = targetUid,
                                         name = d.getString("name") ?: "Michi",
                                         username = d.getString("username") ?: "@michi",
+                                        email = targetEmail,
                                         avatarBase64 = d.getString("avatarBase64"),
-                                        isAdmin = d.getBoolean("isAdmin") ?: false,
+                                        isAdmin = false,
                                         isPrivate = d.getBoolean("isPrivate") ?: false,
                                         isMuted = d.getBoolean("isMuted") ?: false
                                     )
@@ -1229,30 +1257,30 @@ fun MiaubertoMainScreen(
                             Text("Perfil Privado 🔒", color = MiaubertoTextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             Text("Oculta tus publicaciones en tu muro", color = MiaubertoTextSecondary, fontSize = 11.sp)
                         }
-                       Switch(
-    checked = editIsPrivate,
-    onCheckedChange = { editIsPrivate = it },
-    colors = SwitchDefaults.colors(
-        checkedThumbColor = Color.White,
-        checkedTrackColor = MiaubertoRed,
-        uncheckedTrackColor = MiaubertoBorder
-    )
-)
+                        Switch(
+                            checked = editIsPrivate,
+                            onCheckedChange = { editIsPrivate = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = MiaubertoRed,
+                                uncheckedTrackColor = MiaubertoBorder
+                            )
+                        )
                     }
 
-                    if (!currentUser.isAdmin) {
-                        Spacer(modifier = Modifier.height(8.dp))
+                    // PANEL EXCLUSIVO DEL ADMINISTRADOR PRINCIPAL PARA DESIGNAR CO-ADMINISTRADOR
+                    if (currentUser.email.lowercase().trim() == MAIN_ADMIN_EMAIL.lowercase()) {
+                        Spacer(modifier = Modifier.height(10.dp))
                         OutlinedTextField(
-                            value = secretAdminCodeInput,
-                            onValueChange = { secretAdminCodeInput = it },
-                            label = { Text("Clave Secreta Admin (Opcional)", color = MiaubertoTextSecondary) },
-                            visualTransformation = PasswordVisualTransformation(),
+                            value = coAdminEmailInput,
+                            onValueChange = { coAdminEmailInput = it },
+                            label = { Text("Correo Co-Administrador (Elegido)", color = MiaubertoGold) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = MiaubertoTextPrimary,
                                 unfocusedTextColor = MiaubertoTextPrimary,
-                                focusedBorderColor = MiaubertoRed,
+                                focusedBorderColor = MiaubertoGold,
                                 unfocusedBorderColor = MiaubertoBorder
                             )
                         )
@@ -1288,14 +1316,18 @@ fun MiaubertoMainScreen(
                         if (editNameInput.isNotBlank() && !isSavingProfile) {
                             isSavingProfile = true
                             val newAvatarBase64 = if (editAvatarUri != null) uriToBase64(context, editAvatarUri!!, 200) else currentUser.avatarBase64
-                            
-                            val promoteToAdmin = currentUser.isAdmin || secretAdminCodeInput.trim() == "miauberto2026"
+
+                            // Guardar Co-Admin si el usuario es el Admin Principal
+                            if (currentUser.email.lowercase().trim() == MAIN_ADMIN_EMAIL.lowercase()) {
+                                db.collection("app_settings").document("config").set(
+                                    hashMapOf("coAdminEmail" to coAdminEmailInput.trim().lowercase())
+                                )
+                            }
 
                             val updatedMap = hashMapOf<String, Any?>(
                                 "name" to editNameInput,
                                 "username" to editUsernameInput,
                                 "avatarBase64" to newAvatarBase64,
-                                "isAdmin" to promoteToAdmin,
                                 "isPrivate" to editIsPrivate
                             )
 
@@ -1305,8 +1337,9 @@ fun MiaubertoMainScreen(
                                         uid = currentUser.uid,
                                         name = editNameInput,
                                         username = editUsernameInput,
+                                        email = currentUser.email,
                                         avatarBase64 = newAvatarBase64,
-                                        isAdmin = promoteToAdmin,
+                                        isAdmin = currentUser.isAdmin,
                                         isPrivate = editIsPrivate,
                                         isMuted = currentUser.isMuted
                                     )
