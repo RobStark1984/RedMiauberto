@@ -238,4 +238,67 @@ fun StatBar(label: String, progress: Float, color: Color) {
             trackColor = MiaubertoDarkBtn,
         )
     }
+    fun playMiaubertoRaspyVoice(actionType: Int) {
+    try {
+        val sampleRate = 11025
+        val durationMs = when (actionType) {
+            0 -> 350 // Gruñido al tocarlo
+            1 -> 250 // Ronroneo rasposo al alimentar
+            else -> 400 // Maullido ronco y largo
+        }
+        val numSamples = (durationMs * sampleRate) / 1000
+        val sample = ByteArray(numSamples * 2)
+
+        for (i in 0 until numSamples) {
+            val t = i.toDouble() / sampleRate
+            // Frecuencias muy graves y rasposas (tono de gato enojado o ronco: 75Hz - 120Hz)
+            val baseFreq = when (actionType) {
+                0 -> 85.0 + Math.sin(t * 30.0) * 15.0 // Gruñido oscilante
+                1 -> 110.0 // Ronroneo constante
+                else -> 95.0
+            }
+            
+            val angle = 2.0 * Math.PI * baseFreq * t
+            // Combinamos onda cuadrada con ruido blanco pesado para dar el efecto de "garganta rasposa"
+            val squareWave = if (Math.sin(angle) > 0) 1.0 else -1.0
+            val harshNoise = (Math.random() * 2.0 - 1.0) * 0.6
+            
+            val rawVal = (squareWave * 0.4 + harshNoise * 0.6)
+            
+            // Envolvente de volumen (sube rápido y decae)
+            val envelope = if (i < 1000) {
+                i.toDouble() / 1000.0
+            } else {
+                (numSamples - i).toDouble() / (numSamples - 1000).coerceAtLeast(1).toDouble()
+            }
+
+            val finalVal = (rawVal * envelope * 22000.0).toInt().coerceIn(-32768, 32767).toShort()
+            sample[2 * i] = (finalVal.toInt() and 0x00ff).toByte()
+            sample[2 * i + 1] = ((finalVal.toInt() and 0xff00) ushr 8).toByte()
+        }
+
+        val audioTrack = AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            )
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setSampleRate(sampleRate)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .build()
+            )
+            .setBufferSizeInBytes(sample.size)
+            .setTransferMode(AudioTrack.MODE_STATIC)
+            .build()
+
+        audioTrack.write(sample, 0, sample.size)
+        audioTrack.play()
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+}
 }
