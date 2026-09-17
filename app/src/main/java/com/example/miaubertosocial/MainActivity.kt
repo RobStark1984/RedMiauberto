@@ -1,6 +1,7 @@
 package com.example.miaubertosocial
 
 import android.Manifest
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -12,11 +13,15 @@ import android.media.AudioTrack
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Base64
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -126,6 +131,51 @@ fun decodeBase64ToBitmap(base64Str: String?): Bitmap? {
         BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
     } catch (e: Exception) {
         null
+    }
+}
+
+fun saveBitmapToGallery(context: Context, bitmap: Bitmap, title: String): Boolean {
+    return try {
+        val filename = "Sticker_${System.currentTimeMillis()}.jpg"
+        var fos: java.io.OutputStream? = null
+        var imageUri: Uri? = null
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val contentValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+                put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/MiaubertoStickers")
+            }
+            imageUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+            if (imageUri != null) {
+                fos = resolver.openOutputStream(imageUri)
+            }
+        } else {
+            val imagesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).toString() + "/MiaubertoStickers"
+            val fileDir = File(imagesDir)
+            if (!fileDir.exists()) fileDir.mkdirs()
+            val image = File(fileDir, filename)
+            fos = java.io.FileOutputStream(image)
+            imageUri = Uri.fromFile(image)
+        }
+
+        fos?.use {
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)
+            Toast.format("¡Sticker guardado para WhatsApp! 📲", Toast.LENGTH_SHORT)
+        }
+
+        // Permitir que WhatsApp lo detecte al compartir directamente si se desea
+        if (imageUri != null) {
+            Toast.makeText(context, "✅ ¡Guardado en Galería / MiaubertoStickers!", Toast.LENGTH_LONG).show()
+            true
+        } else {
+            false
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(context, "Error al guardar sticker", Toast.LENGTH_SHORT).show()
+        false
     }
 }
 
@@ -1660,7 +1710,7 @@ fun MiaubertoMainScreen(
         }
     }
 
-    // MODAL SELECCIONAR STICKER
+    // MODAL SELECCIONAR STICKER (CON OPCIÓN DE GUARDAR PARA WHATSAPP)
     if (showStickerPickerModal) {
         AlertDialog(
             onDismissRequest = { showStickerPickerModal = false },
@@ -1672,34 +1722,57 @@ fun MiaubertoMainScreen(
                     }
                 } else {
                     LazyVerticalGrid(
-                        columns = GridCells.Fixed(3),
-                        modifier = Modifier.fillMaxWidth().height(250.dp),
+                        columns = GridCells.Fixed(2),
+                        modifier = Modifier.fillMaxWidth().height(280.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(guildStickers) { sticker ->
-                            Box(
+                            Column(
                                 modifier = Modifier
-                                    .size(80.dp)
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(MiaubertoBg)
                                     .border(1.dp, MiaubertoGold, RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        selectedStickerBase64 = sticker.imageBase64
-                                        selectedImageUri = null
-                                        recordedAudioFile = null
-                                        showStickerPickerModal = false
-                                    },
-                                contentAlignment = Alignment.Center
+                                    .padding(8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 val bmp = decodeBase64ToBitmap(sticker.imageBase64)
-                                if (bmp != null) {
-                                    Image(
-                                        bitmap = bmp.asImageBitmap(),
-                                        contentDescription = sticker.title,
-                                        modifier = Modifier.fillMaxSize().padding(4.dp),
-                                        contentScale = ContentScale.Crop
-                                    )
+                                Box(
+                                    modifier = Modifier
+                                        .size(70.dp)
+                                        .clickable {
+                                            selectedStickerBase64 = sticker.imageBase64
+                                            selectedImageUri = null
+                                            recordedAudioFile = null
+                                            showStickerPickerModal = false
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (bmp != null) {
+                                        Image(
+                                            bitmap = bmp.asImageBitmap(),
+                                            contentDescription = sticker.title,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(sticker.title, color = MiaubertoTextPrimary, fontSize = 10.sp, maxLines = 1)
+
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Button(
+                                    onClick = {
+                                        if (bmp != null) {
+                                            saveBitmapToGallery(context, bmp, sticker.title)
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MiaubertoDarkBtn),
+                                    shape = RoundedCornerShape(6.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text("📥 Guardar WA", fontSize = 9.sp, color = MiaubertoGold)
                                 }
                             }
                         }
@@ -2290,15 +2363,29 @@ fun PostItemCard(
                     "image", "sticker" -> {
                         val bmp = decodeBase64ToBitmap(post.mediaBase64)
                         if (bmp != null) {
-                            Image(
-                                bitmap = bmp.asImageBitmap(),
-                                contentDescription = "Imagen o Sticker",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 350.dp)
-                                    .clip(RoundedCornerShape(10.dp)),
-                                contentScale = ContentScale.Crop
-                            )
+                            Column {
+                                Image(
+                                    bitmap = bmp.asImageBitmap(),
+                                    contentDescription = "Imagen o Sticker",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 350.dp)
+                                        .clip(RoundedCornerShape(10.dp)),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Button(
+                                    onClick = {
+                                        saveBitmapToGallery(context, bmp, "StickerMuro")
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MiaubertoDarkBtn),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.align(Alignment.End),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text("📥 Guardar para WhatsApp", fontSize = 11.sp, color = MiaubertoGold)
+                                }
+                            }
                         }
                     }
                     "audio" -> {
@@ -2477,7 +2564,7 @@ fun PostItemCard(
                     Row(
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(vertical = 8.dp)
+                        modifier = Modifier.padding(vertical = `post`.likesList.size.let { 8.dp }) // safe
                     ) {
                         Text(
                             text = "😾 Gruñir",
