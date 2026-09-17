@@ -84,7 +84,8 @@ data class UserProfile(
     val avatarBase64: String? = null,
     val isAdmin: Boolean = false,
     val isPrivate: Boolean = false,
-    val isMuted: Boolean = false
+    val isMuted: Boolean = false,
+    val casinoTitle: String = "Novato del Gremio 🐾"
 )
 
 data class Comment(
@@ -163,35 +164,33 @@ fun playInstrumentTone(freq: Double, instrumentType: Int, durationMs: Int = 220)
             val t = i.toDouble() / sampleRate
             val angle = 2.0 * Math.PI * freq * t
             
-            // Modelado de onda según el instrumento para mayor realismo retro
             val rawVal = when (instrumentType) {
-                0 -> { // 🥁 Batería (Ruido percusivo con caída rápida)
+                0 -> { // 🥁 Batería
                     val noise = (Math.random() * 2.0 - 1.0)
                     noise * Math.exp(-t * 18.0)
                 }
-                1 -> { // 🎸 Bajo (Onda cuadrada con armónicos graves)
+                1 -> { // 🎸 Bajo
                     val sq = if (Math.sin(angle) > 0) 1.0 else -1.0
                     val sub = if (Math.sin(angle * 0.5) > 0) 0.5 else -0.5
                     (sq * 0.7 + sub * 0.3) * Math.exp(-t * 4.0)
                 }
-                2 -> { // 🎸 Guitarra (Onda de diente de sierra simulada con sustain cálido)
+                2 -> { // 🎸 Guitarra
                     var saw = 0.0
                     for (n in 1..4) {
                         saw += Math.sin(angle * n) / n
                     }
                     saw * Math.exp(-t * 6.0)
                 }
-                3 -> { // 🎹 Piano (Onda senoidal con doble armónico brillante)
+                3 -> { // 🎹 Piano
                     (Math.sin(angle) + 0.5 * Math.sin(angle * 2.0) + 0.25 * Math.sin(angle * 3.0)) * Math.exp(-t * 5.0)
                 }
-                else -> { // 🎺 Trompeta (Onda pulsante brillante tipo chip de 8 bits)
+                else -> { // 🎺 Trompeta
                     val pulse = if (Math.sin(angle) > 0) 0.8 else -0.8
                     val harmonic = if (Math.sin(angle * 3.0) > 0) 0.2 else -0.2
                     (pulse + harmonic) * Math.exp(-t * 5.0)
                 }
             }
 
-            // Envolvente de volumen (Fade out limpio para evitar chasquidos)
             val envelope = if (i > numSamples - 300) {
                 (numSamples - i).toDouble() / 300.0
             } else {
@@ -293,6 +292,7 @@ fun AppNavigationScreen() {
                                 val username = doc.getString("username") ?: "@admin"
                                 val isPrivate = doc.getBoolean("isPrivate") ?: false
                                 val isMuted = doc.getBoolean("isMuted") ?: false
+                                val casinoTitle = doc.getString("casinoTitle") ?: "Novato del Gremio 🐾"
                                 
                                 val isAdminUser = (userEmail == MAIN_ADMIN_EMAIL.lowercase()) || (userEmail.isNotBlank() && userEmail == chosenCoAdminEmail)
 
@@ -304,7 +304,8 @@ fun AppNavigationScreen() {
                                     avatarBase64 = doc.getString("avatarBase64"),
                                     isAdmin = isAdminUser,
                                     isPrivate = isPrivate,
-                                    isMuted = isMuted
+                                    isMuted = isMuted,
+                                    casinoTitle = casinoTitle
                                 )
                             } else {
                                 currentUserProfile = null
@@ -534,7 +535,8 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                                             avatarBase64 = avatarBase64,
                                             isAdmin = isDefaultAdmin,
                                             isPrivate = false,
-                                            isMuted = false
+                                            isMuted = false,
+                                            casinoTitle = "Novato del Gremio 🐾"
                                         )
                                         val userMap = hashMapOf(
                                             "name" to profile.name,
@@ -542,7 +544,8 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                                             "avatarBase64" to profile.avatarBase64,
                                             "email" to cleanEmail,
                                             "isPrivate" to false,
-                                            "isMuted" to false
+                                            "isMuted" to false,
+                                            "casinoTitle" to "Novato del Gremio 🐾"
                                         )
                                         db.collection("users").document(uid).set(userMap)
                                             .addOnSuccessListener {
@@ -572,6 +575,7 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                                                 val username = doc.getString("username") ?: "@admin"
                                                 val isPrivate = doc.getBoolean("isPrivate") ?: false
                                                 val isMuted = doc.getBoolean("isMuted") ?: false
+                                                val casinoTitle = doc.getString("casinoTitle") ?: "Novato del Gremio 🐾"
 
                                                 val profile = UserProfile(
                                                     uid = uid,
@@ -581,7 +585,8 @@ fun AuthAndProfileScreen(onProfileCreated: (UserProfile) -> Unit) {
                                                     avatarBase64 = doc.getString("avatarBase64"),
                                                     isAdmin = isDefaultAdmin,
                                                     isPrivate = isPrivate,
-                                                    isMuted = isMuted
+                                                    isMuted = isMuted,
+                                                    casinoTitle = casinoTitle
                                                 )
                                                 onProfileCreated(profile)
                                             }
@@ -628,7 +633,7 @@ fun MiaubertoMainScreen(
     onProfileUpdated: (UserProfile) -> Unit,
     onLogout: () -> Unit
 ) {
-    var selectedTab by remember { mutableStateOf(0) } // 0: Muro, 1: Perfil, 2: MusicDJ
+    var selectedTab by remember { mutableStateOf(0) } // 0: Muro, 1: Perfil, 2: MusicDJ, 3: Casino Felino
     var viewedProfileUid by remember { mutableStateOf<String?>(null) }
 
     val db = remember { FirebaseFirestore.getInstance() }
@@ -660,10 +665,13 @@ fun MiaubertoMainScreen(
 
     var selectedPostForMod by remember { mutableStateOf<Post?>(null) }
 
-    // ESTADOS PARA MUSICDJ AMPLIADO (5 pistas x 16 pasos)
-    // 0: Ninguno, 1: Nota baja, 2: Nota media, 3: Nota alta
+    // ESTADOS PARA MUSICDJ (5 pistas x 16 pasos)
     val musicGrid = remember { mutableStateOf(Array(5) { IntArray(16) { 0 } }) }
     var isPlayingMusicDJ by remember { mutableStateOf(false) }
+
+    // ESTADOS PARA CASINO FELINO 🎰
+    var isSpinningWheel by remember { mutableStateOf(false) }
+    var spinResultText = remember { mutableStateOf(currentUser.casinoTitle) }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
@@ -824,7 +832,7 @@ fun MiaubertoMainScreen(
                         viewedProfileUid = null
                     },
                     icon = { Text("🌐", fontSize = 18.sp) },
-                    label = { Text("Muro", fontSize = 11.sp, color = if (selectedTab == 0 && viewedProfileUid == null) MiaubertoRed else MiaubertoTextSecondary) }
+                    label = { Text("Muro", fontSize = 10.sp, color = if (selectedTab == 0 && viewedProfileUid == null) MiaubertoRed else MiaubertoTextSecondary) }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 1 && viewedProfileUid == null,
@@ -833,7 +841,7 @@ fun MiaubertoMainScreen(
                         viewedProfileUid = null
                     },
                     icon = { Text("👤", fontSize = 18.sp) },
-                    label = { Text("Mi Perfil", fontSize = 11.sp, color = if (selectedTab == 1 && viewedProfileUid == null) MiaubertoRed else MiaubertoTextSecondary) }
+                    label = { Text("Perfil", fontSize = 10.sp, color = if (selectedTab == 1 && viewedProfileUid == null) MiaubertoRed else MiaubertoTextSecondary) }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 2,
@@ -842,7 +850,16 @@ fun MiaubertoMainScreen(
                         viewedProfileUid = null
                     },
                     icon = { Text("🎵", fontSize = 18.sp) },
-                    label = { Text("MusicDJ", fontSize = 11.sp, color = if (selectedTab == 2) MiaubertoRed else MiaubertoTextSecondary) }
+                    label = { Text("MusicDJ", fontSize = 10.sp, color = if (selectedTab == 2) MiaubertoRed else MiaubertoTextSecondary) }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 3,
+                    onClick = {
+                        selectedTab = 3
+                        viewedProfileUid = null
+                    },
+                    icon = { Text("🎰", fontSize = 18.sp) },
+                    label = { Text("Casino", fontSize = 10.sp, color = if (selectedTab == 3) MiaubertoRed else MiaubertoTextSecondary) }
                 )
             }
         },
@@ -854,8 +871,115 @@ fun MiaubertoMainScreen(
             else -> posts
         }
 
-        if (selectedTab == 2) {
-            // VISTA MUSIC DJ AMPLIADA (16 PASOS Y SONIDOS REALISTAS)
+        if (selectedTab == 3) {
+            // VISTA CASINO FELINO 🎰 (Diferenciador único)
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(2.dp, MiaubertoGold, RoundedCornerShape(20.dp))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("🎰 CASINO FELINO 🎰", color = MiaubertoGold, fontSize = 22.sp, fontWeight = FontWeight.Black)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Gira la ruleta del destino para ganar títulos legendarios en el Gremio.", color = MiaubertoTextSecondary, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        Surface(
+                            color = MiaubertoBg,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, MiaubertoRed, RoundedCornerShape(12.dp))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text("Tu Rango Actual:", color = MiaubertoTextSecondary, fontSize = 11.sp)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = spinResultText.value,
+                                    color = MiaubertoGold,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        Button(
+                            onClick = {
+                                if (!isSpinningWheel) {
+                                    isSpinningWheel = true
+                                    coroutineScope.launch(Dispatchers.Default) {
+                                        val possibleTitles = listOf(
+                                            "👑 Emperador de las Sombras",
+                                            "😼 Michi Hacker Élite",
+                                            "🐾 Señor Supremo de las Croquetas",
+                                            "⚡ Mente Maestra Felina",
+                                            "🌙 Guardián de la Noche Oscura",
+                                            "🎯 Francotirador de Lasser",
+                                            "🍕 Don Gato de la Pizza",
+                                            "🎸 Leyenda del MusicDJ"
+                                        )
+
+                                        for (i in 0..10) {
+                                            spinResultText.value = possibleTitles.random()
+                                            delay(100L)
+                                        }
+
+                                        val finalTitle = possibleTitles.random()
+                                        spinResultText.value = finalTitle
+                                        isSpinningWheel = false
+
+                                        // Guardar en Firestore
+                                        db.collection("users").document(currentUser.uid)
+                                            .update("casinoTitle", finalTitle)
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MiaubertoRed),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            enabled = !isSpinningWheel
+                        ) {
+                            if (isSpinningWheel) {
+                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                            } else {
+                                Text("🎲 ¡Girar la Ruleta Mágica!", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Text(
+                            text = "💡 Cada giro otorga un título exclusivo que todos verán en tu perfil y publicaciones.",
+                            color = MiaubertoTextSecondary,
+                            fontSize = 10.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+            }
+        } else if (selectedTab == 2) {
+            // VISTA MUSIC DJ AMPLIADA
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -877,11 +1001,11 @@ fun MiaubertoMainScreen(
 
                         val trackIcons = listOf("🥁 Batería", "🎸 Bajo", "🎸 Guitarra", "🎹 Piano", "🎺 Trompeta")
                         val baseFreqs = listOf(
-                            listOf(110.0, 146.8, 196.0), // Batería
-                            listOf(130.8, 164.8, 220.0), // Bajo
-                            listOf(196.0, 246.9, 329.6), // Guitarra
-                            listOf(261.6, 329.6, 440.0), // Piano
-                            listOf(523.2, 659.2, 880.0)  // Trompeta
+                            listOf(110.0, 146.8, 196.0),
+                            listOf(130.8, 164.8, 220.0),
+                            listOf(196.0, 246.9, 329.6),
+                            listOf(261.6, 329.6, 440.0),
+                            listOf(523.2, 659.2, 880.0)
                         )
 
                         for (trackIndex in 0..4) {
@@ -901,9 +1025,9 @@ fun MiaubertoMainScreen(
                                                 .clip(RoundedCornerShape(4.dp))
                                                 .background(
                                                     when (stateValue) {
-                                                        1 -> Color(0xFF10B981) // Verde
-                                                        2 -> Color(0xFF3B82F6) // Azul
-                                                        3 -> Color(0xFFF59E0B) // Naranja
+                                                        1 -> Color(0xFF10B981)
+                                                        2 -> Color(0xFF3B82F6)
+                                                        3 -> Color(0xFFF59E0B)
                                                         else -> MiaubertoDarkBtn
                                                     }
                                                 )
@@ -965,7 +1089,6 @@ fun MiaubertoMainScreen(
 
                             Button(
                                 onClick = {
-                                    // Publicar MusicDJ al Muro General (5 pistas x 16 pasos = 80 caracteres)
                                     var serializedMelody = ""
                                     for (t in 0..4) {
                                         for (s in 0..15) {
@@ -978,7 +1101,7 @@ fun MiaubertoMainScreen(
                                             "authorName" to currentUser.name,
                                             "username" to currentUser.username,
                                             "avatarBase64" to currentUser.avatarBase64,
-                                            "content" to "¡He compuesto una melodía extendida de 16 pasos con MusicDJ! 🎸🎹🎶",
+                                            "content" to "¡Melodía compuesta con MusicDJ! 🎸🎹🎶",
                                             "mediaType" to "musicdj",
                                             "mediaBase64" to serializedMelody,
                                             "likesList" to emptyList<String>(),
@@ -1029,7 +1152,8 @@ fun MiaubertoMainScreen(
                                             avatarBase64 = d.getString("avatarBase64"),
                                             isAdmin = false,
                                             isPrivate = d.getBoolean("isPrivate") ?: false,
-                                            isMuted = d.getBoolean("isMuted") ?: false
+                                            isMuted = d.getBoolean("isMuted") ?: false,
+                                            casinoTitle = d.getString("casinoTitle") ?: "Novato del Gremio 🐾"
                                         )
                                     }
                                 }
@@ -1096,6 +1220,21 @@ fun MiaubertoMainScreen(
                                     color = MiaubertoTextSecondary,
                                     fontSize = 13.sp
                                 )
+
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Surface(
+                                    color = MiaubertoDarkBtn,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.border(1.dp, MiaubertoGold, RoundedCornerShape(8.dp))
+                                ) {
+                                    Text(
+                                        text = targetProfile?.casinoTitle ?: "Novato del Gremio 🐾",
+                                        color = MiaubertoGold,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
 
                                 if (currentUser.isAdmin && !isMyOwn && targetProfile != null) {
                                     Spacer(modifier = Modifier.height(10.dp))
@@ -1799,7 +1938,8 @@ fun MiaubertoMainScreen(
                                         avatarBase64 = newAvatarBase64,
                                         isAdmin = currentUser.isAdmin,
                                         isPrivate = editIsPrivate,
-                                        isMuted = currentUser.isMuted
+                                        isMuted = currentUser.isMuted,
+                                        casinoTitle = currentUser.casinoTitle
                                     )
                                     onProfileUpdated(updatedProfile)
                                     isSavingProfile = false
@@ -2156,7 +2296,6 @@ fun PostItemCard(
                     }
                 }
 
-    
                 Surface(
                     color = MiaubertoDarkBtn,
                     shape = RoundedCornerShape(8.dp),
