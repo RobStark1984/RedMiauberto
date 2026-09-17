@@ -999,7 +999,6 @@ fun MiaubertoMainScreen(
         }
 
         if (selectedTab == 2) {
-            // TABLERO UNIFICADO: LA GUARIDA DEL OCIO (MusicDJ, Casino Felino y Miniestudio de Voz)
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -2865,7 +2864,7 @@ fun PostItemCard(
                     modifier = Modifier.weight(1f)
                 ) {
                     Row(
-                        horizontalArrangement = Alignment.Center,
+                        horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .padding(vertical = 8.dp)
