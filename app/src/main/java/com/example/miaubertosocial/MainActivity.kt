@@ -96,6 +96,12 @@ data class Comment(
     val timestamp: Long = 0L
 )
 
+data class GuildSticker(
+    val id: String = "",
+    val title: String = "",
+    val imageBase64: String = ""
+)
+
 data class Post(
     val id: String,
     val authorUid: String = "",
@@ -104,7 +110,7 @@ data class Post(
     val avatarBase64: String? = null,
     val content: String,
     val postImageBase64: String? = null,
-    val mediaType: String? = null, // "image", "audio", "musicdj"
+    val mediaType: String? = null, // "image", "audio", "musicdj", "sticker"
     val mediaBase64: String? = null,
     val timestamp: String,
     val likesList: List<String> = emptyList(),
@@ -633,7 +639,7 @@ fun MiaubertoMainScreen(
     onProfileUpdated: (UserProfile) -> Unit,
     onLogout: () -> Unit
 ) {
-    var selectedTab by remember { mutableStateOf(0) } // 0: Muro, 1: Perfil, 2: MusicDJ, 3: Casino Felino
+    var selectedTab by remember { mutableStateOf(0) } // 0: Muro, 1: Perfil, 2: MusicDJ, 3: Casino
     var viewedProfileUid by remember { mutableStateOf<String?>(null) }
 
     val db = remember { FirebaseFirestore.getInstance() }
@@ -645,6 +651,7 @@ fun MiaubertoMainScreen(
     var newPostContentText by remember { mutableStateOf("") }
     
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+    var selectedStickerBase64 by remember { mutableStateOf<String?>(null) }
     var recordedAudioFile by remember { mutableStateOf<File?>(null) }
     var isRecordingAudio by remember { mutableStateOf(false) }
     var mediaRecorder by remember { mutableStateOf<MediaRecorder?>(null) }
@@ -665,18 +672,33 @@ fun MiaubertoMainScreen(
 
     var selectedPostForMod by remember { mutableStateOf<Post?>(null) }
 
-    // ESTADOS PARA MUSICDJ (5 pistas x 16 pasos)
+    // ESTADOS PARA MUSICDJ
     val musicGrid = remember { mutableStateOf(Array(5) { IntArray(16) { 0 } }) }
     var isPlayingMusicDJ by remember { mutableStateOf(false) }
 
-    // ESTADOS PARA CASINO FELINO 🎰
+    // ESTADOS PARA CASINO FELINO
     var isSpinningWheel by remember { mutableStateOf(false) }
     var spinResultText = remember { mutableStateOf(currentUser.casinoTitle) }
+
+    // ESTADOS PARA STICKERS Y MEMES DEL GREMIO
+    var guildStickers by remember { mutableStateOf<List<GuildSticker>>(emptyList()) }
+    var showStickerPickerModal by remember { mutableStateOf(false) }
+    var showAdminAddStickerModal by remember { mutableStateOf(false) }
+    var newStickerTitle by remember { mutableStateOf("") }
+    var newStickerImageUri by remember { mutableStateOf<Uri?>(null) }
+    var isUploadingSticker by remember { mutableStateOf(false) }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             selectedImageUri = uri
+            selectedStickerBase64 = null
             recordedAudioFile = null
+        }
+    }
+
+    val newStickerImagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            newStickerImageUri = uri
         }
     }
 
@@ -701,6 +723,7 @@ fun MiaubertoMainScreen(
                 recordedAudioFile = audioFile
                 isRecordingAudio = true
                 selectedImageUri = null
+                selectedStickerBase64 = null
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -717,6 +740,19 @@ fun MiaubertoMainScreen(
         db.collection("app_settings").document("config").get().addOnSuccessListener { d ->
             coAdminEmailInput = d.getString("coAdminEmail") ?: ""
         }
+
+        db.collection("guild_stickers")
+            .addSnapshotListener { snapshot, _ ->
+                if (snapshot != null) {
+                    guildStickers = snapshot.documents.map { doc ->
+                        GuildSticker(
+                            id = doc.id,
+                            title = doc.getString("title") ?: "Sticker del Gremio",
+                            imageBase64 = doc.getString("imageBase64") ?: ""
+                        )
+                    }
+                }
+            }
 
         db.collection("posts")
             .orderBy("createdAt", Query.Direction.DESCENDING)
@@ -805,6 +841,11 @@ fun MiaubertoMainScreen(
                     }
                 },
                 actions = {
+                    if (currentUser.isAdmin) {
+                        IconButton(onClick = { showAdminAddStickerModal = true }) {
+                            Text("➕🖼️", fontSize = 16.sp)
+                        }
+                    }
                     IconButton(onClick = { 
                         editNameInput = currentUser.name
                         editUsernameInput = currentUser.username
@@ -872,7 +913,7 @@ fun MiaubertoMainScreen(
         }
 
         if (selectedTab == 3) {
-            // VISTA CASINO FELINO 🎰 (Diferenciador único)
+            // VISTA CASINO FELINO 🎰
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -947,7 +988,6 @@ fun MiaubertoMainScreen(
                                         spinResultText.value = finalTitle
                                         isSpinningWheel = false
 
-                                        // Guardar en Firestore
                                         db.collection("users").document(currentUser.uid)
                                             .update("casinoTitle", finalTitle)
                                     }
@@ -966,15 +1006,6 @@ fun MiaubertoMainScreen(
                                 Text("🎲 ¡Girar la Ruleta Mágica!", fontSize = 15.sp, fontWeight = FontWeight.Bold)
                             }
                         }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Text(
-                            text = "💡 Cada giro otorga un título exclusivo que todos verán en tu perfil y publicaciones.",
-                            color = MiaubertoTextSecondary,
-                            fontSize = 10.sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
                     }
                 }
             }
@@ -1308,12 +1339,12 @@ fun MiaubertoMainScreen(
                                         )
                                     } else {
                                         val galleryPosts = displayedPosts.filter { 
-                                            it.mediaType == "image" && !it.mediaBase64.isNullOrEmpty() 
+                                            (it.mediaType == "image" || it.mediaType == "sticker") && !it.mediaBase64.isNullOrEmpty() 
                                         }
 
                                         if (galleryPosts.isEmpty()) {
                                             Box(modifier = Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
-                                                Text("No hay fotos en la galería aún 🐾", color = MiaubertoTextSecondary, fontSize = 12.sp)
+                                                Text("No hay fotos ni stickers en la galería aún 🐾", color = MiaubertoTextSecondary, fontSize = 12.sp)
                                             }
                                         } else {
                                             LazyVerticalGrid(
@@ -1441,7 +1472,7 @@ fun MiaubertoMainScreen(
                                         )
                                     }
 
-                                    if (selectedImageUri != null || recordedAudioFile != null) {
+                                    if (selectedImageUri != null || selectedStickerBase64 != null || recordedAudioFile != null) {
                                         Spacer(modifier = Modifier.height(10.dp))
                                         Surface(
                                             color = MiaubertoDarkBtn,
@@ -1454,7 +1485,11 @@ fun MiaubertoMainScreen(
                                                 horizontalArrangement = Arrangement.SpaceBetween
                                             ) {
                                                 Text(
-                                                    text = if (recordedAudioFile != null) (if (isRecordingAudio) "🔴 Grabando nota de voz..." else "🎙️ Nota de voz grabada") else "🖼️ Imagen lista para adjuntar",
+                                                    text = when {
+                                                        recordedAudioFile != null -> if (isRecordingAudio) "🔴 Grabando nota de voz..." else "🎙️ Nota de voz grabada"
+                                                        selectedStickerBase64 != null -> "✨ Sticker o Meme del Gremio adjunto"
+                                                        else -> "🖼️ Imagen lista para adjuntar"
+                                                    },
                                                     color = if (isRecordingAudio) MiaubertoRed else MiaubertoTextPrimary,
                                                     fontSize = 12.sp,
                                                     fontWeight = FontWeight.Bold
@@ -1481,6 +1516,7 @@ fun MiaubertoMainScreen(
                                                 } else {
                                                     TextButton(onClick = {
                                                         selectedImageUri = null
+                                                        selectedStickerBase64 = null
                                                         recordedAudioFile = null
                                                     }) {
                                                         Text("Quitar ❌", color = Color(0xFFEF4444), fontSize = 11.sp)
@@ -1501,6 +1537,9 @@ fun MiaubertoMainScreen(
                                     ) {
                                         TextButton(onClick = { imagePickerLauncher.launch("image/*") }) {
                                             Text("🖼️ Foto", color = MiaubertoTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        TextButton(onClick = { showStickerPickerModal = true }) {
+                                            Text("✨ Stickers 🐱", color = MiaubertoGold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                         }
                                         TextButton(onClick = {
                                             val permissionCheck = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
@@ -1524,6 +1563,7 @@ fun MiaubertoMainScreen(
                                                     recordedAudioFile = audioFile
                                                     isRecordingAudio = true
                                                     selectedImageUri = null
+                                                    selectedStickerBase64 = null
                                                 } catch (e: Exception) {
                                                     e.printStackTrace()
                                                 }
@@ -1531,7 +1571,7 @@ fun MiaubertoMainScreen(
                                                 micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                                             }
                                         }) {
-                                            Text("🎙️ Grabar Audio", color = if (isRecordingAudio) MiaubertoRed else MiaubertoTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            Text("🎙️ Audio", color = if (isRecordingAudio) MiaubertoRed else MiaubertoTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
 
@@ -1539,18 +1579,25 @@ fun MiaubertoMainScreen(
 
                                     Button(
                                         onClick = {
-                                            if ((newPostContentText.isNotBlank() || selectedImageUri != null || recordedAudioFile != null) && !isPosting && !isRecordingAudio) {
+                                            if ((newPostContentText.isNotBlank() || selectedImageUri != null || selectedStickerBase64 != null || recordedAudioFile != null) && !isPosting && !isRecordingAudio) {
                                                 isPosting = true
 
                                                 var mediaBase64: String? = null
                                                 var mediaType: String? = null
 
-                                                if (selectedImageUri != null) {
-                                                    mediaBase64 = uriToBase64(context, selectedImageUri!!, 300)
-                                                    mediaType = "image"
-                                                } else if (recordedAudioFile != null) {
-                                                    mediaBase64 = fileToBase64(recordedAudioFile!!, "data:audio/3gpp;base64")
-                                                    mediaType = "audio"
+                                                when {
+                                                    selectedImageUri != null -> {
+                                                        mediaBase64 = uriToBase64(context, selectedImageUri!!, 300)
+                                                        mediaType = "image"
+                                                    }
+                                                    selectedStickerBase64 != null -> {
+                                                        mediaBase64 = selectedStickerBase64
+                                                        mediaType = "sticker"
+                                                    }
+                                                    recordedAudioFile != null -> {
+                                                        mediaBase64 = fileToBase64(recordedAudioFile!!, "data:audio/3gpp;base64")
+                                                        mediaType = "audio"
+                                                    }
                                                 }
 
                                                 val newPostMap = hashMapOf(
@@ -1570,6 +1617,7 @@ fun MiaubertoMainScreen(
                                                     .addOnSuccessListener {
                                                         newPostContentText = ""
                                                         selectedImageUri = null
+                                                        selectedStickerBase64 = null
                                                         recordedAudioFile = null
                                                         isPosting = false
                                                     }
@@ -1581,7 +1629,7 @@ fun MiaubertoMainScreen(
                                         modifier = Modifier.fillMaxWidth().height(42.dp),
                                         colors = ButtonDefaults.buttonColors(containerColor = MiaubertoRed),
                                         shape = RoundedCornerShape(8.dp),
-                                        enabled = !isPosting && !isRecordingAudio && (newPostContentText.isNotBlank() || selectedImageUri != null || recordedAudioFile != null)
+                                        enabled = !isPosting && !isRecordingAudio && (newPostContentText.isNotBlank() || selectedImageUri != null || selectedStickerBase64 != null || recordedAudioFile != null)
                                     ) {
                                         if (isPosting) {
                                             CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp))
@@ -1610,6 +1658,150 @@ fun MiaubertoMainScreen(
                 }
             }
         }
+    }
+
+    // MODAL SELECCIONAR STICKER
+    if (showStickerPickerModal) {
+        AlertDialog(
+            onDismissRequest = { showStickerPickerModal = false },
+            title = { Text("Stickers y Memes Oficiales 🐱", fontWeight = FontWeight.Bold, color = MiaubertoGold) },
+            text = {
+                if (guildStickers.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
+                        Text("El Líder aún no ha subido stickers. ¡Vuelve pronto!", color = MiaubertoTextSecondary, fontSize = 12.sp)
+                    }
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        modifier = Modifier.fillMaxWidth().height(250.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(guildStickers) { sticker ->
+                            Box(
+                                modifier = Modifier
+                                    .size(80.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MiaubertoBg)
+                                    .border(1.dp, MiaubertoGold, RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        selectedStickerBase64 = sticker.imageBase64
+                                        selectedImageUri = null
+                                        recordedAudioFile = null
+                                        showStickerPickerModal = false
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                val bmp = decodeBase64ToBitmap(sticker.imageBase64)
+                                if (bmp != null) {
+                                    Image(
+                                        bitmap = bmp.asImageBitmap(),
+                                        contentDescription = sticker.title,
+                                        modifier = Modifier.fillMaxSize().padding(4.dp),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showStickerPickerModal = false }) {
+                    Text("Cerrar", color = MiaubertoTextSecondary)
+                }
+            },
+            containerColor = MiaubertoCardBg
+        )
+    }
+
+    // MODAL ADMIN: SUBIR NUEVO STICKER
+    if (showAdminAddStickerModal) {
+        AlertDialog(
+            onDismissRequest = { showAdminAddStickerModal = false },
+            title = { Text("Subir Sticker / Meme Oficial ➕", fontWeight = FontWeight.Bold, color = MiaubertoGold) },
+            text = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(100.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MiaubertoBg)
+                            .border(2.dp, MiaubertoGold, RoundedCornerShape(12.dp))
+                            .clickable { newStickerImagePicker.launch("image/*") },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (newStickerImageUri != null) {
+                            AsyncImage(
+                                model = newStickerImageUri,
+                                contentDescription = "Nuevo sticker",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Text("📷 Seleccionar Imagen", color = MiaubertoGold, fontSize = 11.sp, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    OutlinedTextField(
+                        value = newStickerTitle,
+                        onValueChange = { newStickerTitle = it },
+                        label = { Text("Título del Sticker", color = MiaubertoTextSecondary) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = MiaubertoTextPrimary,
+                            unfocusedTextColor = MiaubertoTextPrimary,
+                            focusedBorderColor = MiaubertoGold,
+                            unfocusedBorderColor = MiaubertoBorder
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newStickerImageUri != null && !isUploadingSticker) {
+                            isUploadingSticker = true
+                            val base64Img = uriToBase64(context, newStickerImageUri!!, 250)
+                            if (base64Img != null) {
+                                val stickerMap = hashMapOf(
+                                    "title" to newStickerTitle.ifBlank { "Sticker Exclusivo" },
+                                    "imageBase64" to base64Img,
+                                    "createdAt" to System.currentTimeMillis()
+                                )
+                                db.collection("guild_stickers").add(stickerMap)
+                                    .addOnSuccessListener {
+                                        newStickerImageUri = null
+                                        newStickerTitle = ""
+                                        isUploadingSticker = false
+                                        showAdminAddStickerModal = false
+                                    }
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MiaubertoGold),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    if (isUploadingSticker) {
+                        CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(16.dp))
+                    } else {
+                        Text("Publicar al Gremio", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAdminAddStickerModal = false }) {
+                    Text("Cancelar", color = MiaubertoTextSecondary)
+                }
+            },
+            containerColor = MiaubertoCardBg
+        )
     }
 
     if (selectedPostForMod != null) {
@@ -2095,12 +2287,12 @@ fun PostItemCard(
             if (!post.mediaBase64.isNullOrEmpty()) {
                 Spacer(modifier = Modifier.height(10.dp))
                 when (post.mediaType) {
-                    "image" -> {
+                    "image", "sticker" -> {
                         val bmp = decodeBase64ToBitmap(post.mediaBase64)
                         if (bmp != null) {
                             Image(
                                 bitmap = bmp.asImageBitmap(),
-                                contentDescription = "Imagen adjunta",
+                                contentDescription = "Imagen o Sticker",
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .heightIn(max = 350.dp)
@@ -2315,21 +2507,21 @@ fun PostItemCard(
                 Surface(
                     color = MiaubertoDarkBtn,
                     shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable {
-                            val shareIntent = Intent().apply {
-                                action = Intent.ACTION_SEND
-                                putExtra(Intent.EXTRA_TEXT, "Comunicado oficial de ${post.authorName} en Miauberto Red:\n\n\"${post.content}\"")
-                                type = "text/plain"
-                            }
-                            context.startActivity(Intent.createChooser(shareIntent, "Difundir comunicado"))
-                        }
+                    modifier = Modifier.weight(1f)
                 ) {
                     Row(
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(vertical = 8.dp)
+                        modifier = Modifier
+                            .padding(vertical = 8.dp)
+                            .clickable {
+                                val shareIntent = Intent().apply {
+                                    action = Intent.ACTION_SEND
+                                    putExtra(Intent.EXTRA_TEXT, "Comunicado oficial de ${post.authorName} en Miauberto Red:\n\n\"${post.content}\"")
+                                    type = "text/plain"
+                                }
+                                context.startActivity(Intent.createChooser(shareIntent, "Difundir comunicado"))
+                            }
                     ) {
                         Text("↗️ Difundir", color = MiaubertoTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
