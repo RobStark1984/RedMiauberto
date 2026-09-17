@@ -62,6 +62,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import com.example.miaubertosocial.R
+import com.google.ai.client.generativeai.GenerativeModel
+import com.google.ai.client.generativeai.type.content
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -115,7 +117,7 @@ data class GuildSticker(
 
 data class ChatMessage(
     val id: String = "",
-    val sender: String = "", // "user" o "miauberto"
+    val sender: String = "",
     val text: String = "",
     val timestamp: Long = 0L
 )
@@ -271,26 +273,26 @@ fun playInstrumentTone(freq: Double, instrumentType: Int, durationMs: Int = 220)
             val angle = 2.0 * Math.PI * freq * t
             
             val rawVal = when (instrumentType) {
-                0 -> { // 🥁 Batería
+                0 -> {
                     val noise = (Math.random() * 2.0 - 1.0)
                     noise * Math.exp(-t * 18.0)
                 }
-                1 -> { // 🎸 Bajo
+                1 -> {
                     val sq = if (Math.sin(angle) > 0) 1.0 else -1.0
                     val sub = if (Math.sin(angle * 0.5) > 0) 0.5 else -0.5
                     (sq * 0.7 + sub * 0.3) * Math.exp(-t * 4.0)
                 }
-                2 -> { // 🎸 Guitarra
+                2 -> {
                     var saw = 0.0
                     for (n in 1..4) {
                         saw += Math.sin(angle * n) / n
                     }
                     saw * Math.exp(-t * 6.0)
                 }
-                3 -> { // 🎹 Piano
+                3 -> {
                     (Math.sin(angle) + 0.5 * Math.sin(angle * 2.0) + 0.25 * Math.sin(angle * 3.0)) * Math.exp(-t * 5.0)
                 }
-                else -> { // 🎺 Trompeta
+                else -> {
                     val pulse = if (Math.sin(angle) > 0) 0.8 else -0.8
                     val harmonic = if (Math.sin(angle * 3.0) > 0) 0.2 else -0.2
                     (pulse + harmonic) * Math.exp(-t * 5.0)
@@ -741,9 +743,8 @@ fun MiaubertoMainScreen(
 ) {
     var selectedTab by remember { mutableStateOf(0) }
     var viewedProfileUid by remember { mutableStateOf<String?>(null) }
-    var arcadeSubTab by remember { mutableStateOf(0) } // 0: MusicDJ, 1: Casino, 2: Miniestudio, 3: Chat IA Miauberto
+    var arcadeSubTab by remember { mutableStateOf(0) }
 
-    // ESTADO DEL MENSAJE FLOTANTE DE MIAUBERTO 😼💬
     var showMiaubertoFloatingBubble by remember { mutableStateOf(true) }
     val miaubertoPhrases = remember {
         listOf(
@@ -786,27 +787,23 @@ fun MiaubertoMainScreen(
 
     var selectedPostForMod by remember { mutableStateOf<Post?>(null) }
 
-    // ESTADOS PARA MUSICDJ
     val musicGrid = remember { mutableStateOf(Array(5) { IntArray(16) { 0 } }) }
     var isPlayingMusicDJ by remember { mutableStateOf(false) }
 
-    // ESTADOS PARA CASINO FELINO
     var isSpinningWheel by remember { mutableStateOf(false) }
     var spinResultText = remember { mutableStateOf(currentUser.casinoTitle) }
 
-    // ESTADOS PARA MINIESTUDIO DE GRABACIÓN VOCAL 🎙️🎶
     var studioBeatType by remember { mutableStateOf(0) }
     var isPlayingStudioBeat by remember { mutableStateOf(false) }
     var isStudioRecording by remember { mutableStateOf(false) }
     var studioRecordedFile by remember { mutableStateOf<File?>(null) }
     var studioMediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
 
-    // ESTADOS PARA CHAT CON MIAUBERTO 💬🧠
+    // ESTADOS CHAT IA MIAUBERTO
     var chatMessages by remember { mutableStateOf<List<ChatMessage>>(emptyList()) }
     var chatInputText by remember { mutableStateOf("") }
     var isMiaubertoTyping by remember { mutableStateOf(false) }
 
-    // ESTADOS PARA STICKERS Y MEMES DEL GREMIO
     var guildStickers by remember { mutableStateOf<List<GuildSticker>>(emptyList()) }
     var showStickerPickerModal by remember { mutableStateOf(false) }
     var showAdminAddStickerModal by remember { mutableStateOf(false) }
@@ -876,7 +873,6 @@ fun MiaubertoMainScreen(
                         )
                     }
                     if (chatMessages.isEmpty()) {
-                        // Saludo inicial automático si no hay historial
                         val welcomeMsg = hashMapOf(
                             "sender" to "miauberto",
                             "text" to "¡Miau! Soy Miauberto. Veo que andas por aquí aburrido. ¿Qué tramamos hoy, humano? 😼",
@@ -1538,7 +1534,7 @@ fun MiaubertoMainScreen(
                             }
                         }
                     } else {
-                        // CHAT CON MIAUBERTO 💬🧠
+                        // CHAT IA CON GEMINI Y MEMORIA EN FIRESTORE
                         Card(
                             colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
                             shape = RoundedCornerShape(16.dp),
@@ -1561,10 +1557,10 @@ fun MiaubertoMainScreen(
                                         contentScale = ContentScale.Crop
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Chat con Miauberto 💬", color = MiaubertoRed, fontSize = 16.sp, fontWeight = FontWeight.Black)
+                                    Text("Chat con Miauberto (IA) 💬", color = MiaubertoRed, fontSize = 16.sp, fontWeight = FontWeight.Black)
                                 }
                                 Spacer(modifier = Modifier.height(2.dp))
-                                Text("Plática con memoria guardada. ¡Dile adiós al aburrimiento!", color = MiaubertoTextSecondary, fontSize = 10.sp)
+                                Text("Plática impulsada por Gemini con memoria persistente.", color = MiaubertoTextSecondary, fontSize = 10.sp)
 
                                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -1653,31 +1649,50 @@ fun MiaubertoMainScreen(
                                                 chatRef.add(userMsgMap)
 
                                                 isMiaubertoTyping = true
-                                                coroutineScope.launch(Dispatchers.Default) {
-                                                    delay(1200L) // Simula que piensa
+                                                coroutineScope.launch(Dispatchers.IO) {
+                                                    try {
+                                                        val generativeModel = GenerativeModel(
+                                                            modelName = "gemini-1.5-flash",
+                                                            apiKey = BuildConfig.GEMINI_API_KEY,
+                                                            systemInstruction = content {
+                                                                text("""
+                                                                    Eres Miauberto, un gato negro sarcástico, inteligente y líder supremo de un gremio felino malvado en una red social.
+                                                                    Te encanta la pizza, los tacos, las croquetas, el café y la Coca-Cola.
+                                                                    Regañas y aconsejas a los humanos con frases como '¡De calladito te vez mas bonito!'.
+                                                                    Responde siempre en español, de forma breve, con un tono felino, altivo, malvado pero entretenido, usando emojis de gatos (🐾, 😼, 🧶).
+                                                                """.trimIndent())
+                                                            }
+                                                        )
 
-                                                    val replyText = when {
-                                                        textToSend.lowercase().contains("hola") || textToSend.lowercase().contains("que tal") -> "¡Miau! Qué milagro que te dignas a hablarme. ¿Qué se te ofrece, humano?"
-                                                        textToSend.lowercase().contains("aburrido") || textToSend.lowercase().contains("aburrimiento") -> "¡De calladito te vez mas bonito! Pero si insistes en hablar, vete a componer algo en el MusicDJ o a girar la ruleta del casino 🎰."
-                                                        textToSend.lowercase().contains("chiste") || textToSend.lowercase().contains("broma") -> "¿Qué hace un michi en la computadora? ¡Un miau-gale de código malvado! 😼 Jaja, qué gran chiste."
-                                                        textToSend.lowercase().contains("pizza") || textToSend.lowercase().contains("tacos") -> "¡Excelente gusto! Una buena pizza o unos tacos acompañados de Coca-Cola son dignos del Gremio Supremo 🍕."
-                                                        textToSend.lowercase().contains("quien eres") -> "Soy Miauberto, el soberano felino de esta red social. Estoy vigilando cada uno de tus pasos y guardando memoria de nuestra charla 🐾."
-                                                        else -> listOf(
-                                                            "Interesante lo que dices... Lo registraré en los archivos secretos del gremio 😼.",
-                                                            "¡Miau! Eso suena a que estás planeando algo contra las reglas. Me gusta.",
-                                                            "¡De calladito te vez mas bonito! Pero te perdono porque me trajiste croquetas virtuales.",
-                                                            "Sigue hablando, humano. Me entretienes mientras tomo mi café ☕.",
-                                                            "¿Estás seguro de eso? Recuerda que el Líder Supremo siempre tiene la última palabra 👑."
-                                                        ).random()
+                                                        val previousHistory = chatMessages.takeLast(10).map { msg ->
+                                                            if (msg.sender == "user") {
+                                                                content(role = "user") { text(msg.text) }
+                                                            } else {
+                                                                content(role = "model") { text(msg.text) }
+                                                            }
+                                                        }
+
+                                                        val chatSession = generativeModel.startChat(history = previousHistory)
+                                                        val response = chatSession.sendMessage(textToSend)
+                                                        val aiReply = response.text ?: "¡Miau! Me he quedado sin palabras en las sombras."
+
+                                                        val miauMsgMap = hashMapOf(
+                                                            "sender" to "miauberto",
+                                                            "text" to aiReply,
+                                                            "timestamp" to System.currentTimeMillis()
+                                                        )
+                                                        chatRef.add(miauMsgMap)
+                                                    } catch (e: Exception) {
+                                                        e.printStackTrace()
+                                                        val errorMsgMap = hashMapOf(
+                                                            "sender" to "miauberto",
+                                                            "text" to "¡Miau! Interferencia en la red oscura. No pude procesar tu mensaje, humano.",
+                                                            "timestamp" to System.currentTimeMillis()
+                                                        )
+                                                        chatRef.add(errorMsgMap)
+                                                    } finally {
+                                                        isMiaubertoTyping = false
                                                     }
-
-                                                    val miauMsgMap = hashMapOf(
-                                                        "sender" to "miauberto",
-                                                        "text" to replyText,
-                                                        "timestamp" to System.currentTimeMillis()
-                                                    )
-                                                    chatRef.add(miauMsgMap)
-                                                    isMiaubertoTyping = false
                                                 }
                                             }
                                         },
@@ -2198,7 +2213,6 @@ fun MiaubertoMainScreen(
             }
         }
 
-        // MENSAJE FLOTANTE DE MIAUBERTO 😼💬 (Superpuesto en la esquina inferior)
         Box(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -3136,7 +3150,7 @@ fun PostItemCard(
                         .clickable { onCommentClick(post.id) }
                 ) {
                     Row(
-                        horizontalArrangement = Alignment.Center,
+                        horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(vertical = 8.dp)
                     ) {
@@ -3150,7 +3164,7 @@ fun PostItemCard(
                     modifier = Modifier.weight(1f)
                 ) {
                     Row(
-                        horizontalArrangement = Alignment.Center,
+                        horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .padding(vertical = 8.dp)
