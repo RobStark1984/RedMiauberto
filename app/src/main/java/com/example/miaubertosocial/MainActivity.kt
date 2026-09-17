@@ -115,7 +115,7 @@ data class Post(
     val avatarBase64: String? = null,
     val content: String,
     val postImageBase64: String? = null,
-    val mediaType: String? = null, // "image", "audio", "musicdj", "sticker", "miniestudio"
+    val mediaType: String? = null, // "image", "audio", "musicdj", "sticker"
     val mediaBase64: String? = null,
     val timestamp: String,
     val likesList: List<String> = emptyList(),
@@ -173,6 +173,45 @@ fun saveBitmapToGallery(context: Context, bitmap: Bitmap, title: String): Boolea
     } catch (e: Exception) {
         e.printStackTrace()
         Toast.makeText(context, "Error al guardar sticker", Toast.LENGTH_SHORT).show()
+        false
+    }
+}
+
+fun saveAudioFileToDownloads(context: Context, audioFile: File): Boolean {
+    return try {
+        val filename = "CoverMiau_${System.currentTimeMillis()}.3gp"
+        var fos: java.io.OutputStream? = null
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val contentValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+                put(MediaStore.MediaColumns.MIME_TYPE, "audio/3gpp")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_MUSIC + "/MiaubertoStudio")
+            }
+            val audioUri = resolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, contentValues)
+            if (audioUri != null) {
+                fos = resolver.openOutputStream(audioUri)
+            }
+        } else {
+            val musicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC).toString() + "/MiaubertoStudio"
+            val fileDir = File(musicDir)
+            if (!fileDir.exists()) fileDir.mkdirs()
+            val destFile = File(fileDir, filename)
+            fos = java.io.FileOutputStream(destFile)
+        }
+
+        fos?.use { output ->
+            FileInputStream(audioFile).use { input ->
+                input.copyTo(output)
+            }
+        }
+
+        Toast.makeText(context, "📥 ¡Canción guardada en Música / MiaubertoStudio!", Toast.LENGTH_LONG).show()
+        true
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(context, "Error al guardar la canción", Toast.LENGTH_SHORT).show()
         false
     }
 }
@@ -687,9 +726,9 @@ fun MiaubertoMainScreen(
     onProfileUpdated: (UserProfile) -> Unit,
     onLogout: () -> Unit
 ) {
-    var selectedTab by remember { mutableStateOf(0) } // 0: Muro, 1: Perfil, 2: Guarida del Ocio (MusicDJ + Casino + Miniestudio)
+    var selectedTab by remember { mutableStateOf(0) } // 0: Muro, 1: Perfil, 2: La Guarida (MusicDJ + Casino + Miniestudio)
     var viewedProfileUid by remember { mutableStateOf<String?>(null) }
-    var arcadeSubTab by remember { mutableStateOf(0) } // 0: MusicDJ, 1: Casino Felino, 2: Miniestudio de Voz
+    var arcadeSubTab by remember { mutableStateOf(0) } // 0: MusicDJ, 1: Casino, 2: Miniestudio
 
     val db = remember { FirebaseFirestore.getInstance() }
     val auth = remember { FirebaseAuth.getInstance() }
@@ -968,7 +1007,6 @@ fun MiaubertoMainScreen(
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Selector de pestañas internas del tablero
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1006,7 +1044,6 @@ fun MiaubertoMainScreen(
                 }
 
                 if (arcadeSubTab == 0) {
-                    // VISTA MUSIC DJ AMPLIADA
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
                         shape = RoundedCornerShape(16.dp),
@@ -1143,7 +1180,6 @@ fun MiaubertoMainScreen(
                         }
                     }
                 } else if (arcadeSubTab == 1) {
-                    // VISTA CASINO FELINO 🎰
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
                         shape = RoundedCornerShape(16.dp),
@@ -1231,7 +1267,6 @@ fun MiaubertoMainScreen(
                         }
                     }
                 } else {
-                    // VISTA MINIESTUDIO DE GRABACIÓN VOCAL 🎙️🎶
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
                         shape = RoundedCornerShape(16.dp),
@@ -1247,7 +1282,6 @@ fun MiaubertoMainScreen(
 
                             Spacer(modifier = Modifier.height(14.dp))
 
-                            // Selector de pista
                             val beatNames = listOf("🎵 Pista 1: Pop Rock Gremio", "⚡ Pista 2: Electro Miau", "🌙 Pista 3: Balada Romántica")
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1268,16 +1302,15 @@ fun MiaubertoMainScreen(
 
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            // Reproducir pista de fondo
                             Button(
                                 onClick = {
                                     if (!isPlayingStudioBeat) {
                                         isPlayingStudioBeat = true
                                         coroutineScope.launch(Dispatchers.Default) {
                                             val beatFreqs = when (studioBeatType) {
-                                                0 -> listOf(261.6, 329.6, 392.0, 523.2) // Pop
-                                                1 -> listOf(130.8, 196.0, 261.6, 329.6) // Electro
-                                                else -> listOf(220.0, 246.9, 329.6, 440.0) // Balada
+                                                0 -> listOf(261.6, 329.6, 392.0, 523.2)
+                                                1 -> listOf(130.8, 196.0, 261.6, 329.6)
+                                                else -> listOf(220.0, 246.9, 329.6, 440.0)
                                             }
                                             for (loop in 0..8) {
                                                 if (!isPlayingStudioBeat) break
@@ -1304,7 +1337,6 @@ fun MiaubertoMainScreen(
                             Divider(color = MiaubertoBorder, thickness = 0.8.dp)
                             Spacer(modifier = Modifier.height(14.dp))
 
-                            // Controles de Grabación de Voz
                             Text(
                                 text = if (isStudioRecording) "🔴 Grabando tu voz..." else (if (studioRecordedFile != null) "✅ ¡Voz grabada con éxito!" else "🎤 Listo para grabar tu voz"),
                                 color = if (isStudioRecording) MiaubertoRed else MiaubertoTextPrimary,
@@ -1394,7 +1426,20 @@ fun MiaubertoMainScreen(
                                     Text("Escuchar Grabación 🔊", fontSize = 12.sp, color = MiaubertoGold)
                                 }
 
-                                Spacer(modifier = Modifier.height(8.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                Button(
+                                    onClick = {
+                                        saveAudioFileToDownloads(context, studioRecordedFile!!)
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MiaubertoDarkBtn),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("📥 Descargar Canción al Teléfono", fontSize = 12.sp, color = MiaubertoGold, fontWeight = FontWeight.Bold)
+                                }
+
+                                Spacer(modifier = Modifier.height(6.dp))
 
                                 Button(
                                     onClick = {
@@ -1935,7 +1980,6 @@ fun MiaubertoMainScreen(
         }
     }
 
-    // MODAL SELECCIONAR STICKER
     if (showStickerPickerModal) {
         AlertDialog(
             onDismissRequest = { showStickerPickerModal = false },
@@ -2013,7 +2057,6 @@ fun MiaubertoMainScreen(
         )
     }
 
-    // MODAL ADMIN: SUBIR NUEVO STICKER
     if (showAdminAddStickerModal) {
         AlertDialog(
             onDismissRequest = { showAdminAddStickerModal = false },
@@ -2812,7 +2855,7 @@ fun PostItemCard(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(vertical = 8.dp)
                     ) {
-                        Text("💬 Opinar", color = MiaubertoTextSecondary, fontSize = 11.sp,fontWeight = FontWeight.Bold)
+                        Text("💬 Opinar", color = MiaubertoTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
