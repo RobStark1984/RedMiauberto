@@ -162,10 +162,8 @@ fun saveBitmapToGallery(context: Context, bitmap: Bitmap, title: String): Boolea
 
         fos?.use {
             bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)
-            Toast.format("¡Sticker guardado para WhatsApp! 📲", Toast.LENGTH_SHORT)
         }
 
-        // Permitir que WhatsApp lo detecte al compartir directamente si se desea
         if (imageUri != null) {
             Toast.makeText(context, "✅ ¡Guardado en Galería / MiaubertoStickers!", Toast.LENGTH_LONG).show()
             true
@@ -178,7 +176,6 @@ fun saveBitmapToGallery(context: Context, bitmap: Bitmap, title: String): Boolea
         false
     }
 }
-
 fun uriToBase64(context: Context, uri: Uri, maxSize: Int = 300): String? {
     return try {
         val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
