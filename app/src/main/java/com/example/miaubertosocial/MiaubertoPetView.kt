@@ -1,7 +1,9 @@
 package com.example.miaubertosocial
 
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,28 +16,86 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+// Función para generar la voz rasposa y ronca de Miauberto
+fun playMiaubertoRaspyVoice(actionType: Int) {
+    try {
+        val sampleRate = 11025
+        val durationMs = when (actionType) {
+            0 -> 350 // Gruñido al tocarlo
+            1 -> 250 // Ronroneo rasposo al alimentar
+            else -> 400 // Maullido ronco y largo
+        }
+        val numSamples = (durationMs * sampleRate) / 1000
+        val sample = ByteArray(numSamples * 2)
+
+        for (i in 0 until numSamples) {
+            val t = i.toDouble() / sampleRate
+            val baseFreq = when (actionType) {
+                0 -> 85.0 + Math.sin(t * 30.0) * 15.0
+                1 -> 110.0
+                else -> 95.0
+            }
+            
+            val angle = 2.0 * Math.PI * baseFreq * t
+            val squareWave = if (Math.sin(angle) > 0) 1.0 else -1.0
+            val harshNoise = (Math.random() * 2.0 - 1.0) * 0.6
+            val rawVal = (squareWave * 0.4 + harshNoise * 0.6)
+            
+            val envelope = if (i < 1000) {
+                i.toDouble() / 1000.0
+            } else {
+                (numSamples - i).toDouble() / (numSamples - 1000).coerceAtLeast(1).toDouble()
+            }
+
+            val finalVal = (rawVal * envelope * 22000.0).toInt().coerceIn(-32768, 32767).toShort()
+            sample[2 * i] = (finalVal.toInt() and 0x00ff).toByte()
+            sample[2 * i + 1] = ((finalVal.toInt() and 0xff00) ushr 8).toByte()
+        }
+
+        val audioTrack = AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            )
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setSampleRate(sampleRate)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .build()
+            )
+            .setBufferSizeInBytes(sample.size)
+            .setTransferMode(AudioTrack.MODE_STATIC)
+            .build()
+
+        audioTrack.write(sample, 0, sample.size)
+        audioTrack.play()
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+}
+
 @Composable
 fun MiaubertoPetScreen(currentUser: UserProfile) {
     // Estados de la Mascota Tamagotchi
-    var hunger by remember { mutableStateOf(80) } // 0 a 100
-    var happiness by remember { mutableStateOf(90) } // 0 a 100
-    var energy by remember { mutableStateOf(85) } // 0 a 100
+    var hunger by remember { mutableStateOf(80) }
+    var happiness by remember { mutableStateOf(90) }
+    var energy by remember { mutableStateOf(85) }
     var isSleeping by remember { mutableStateOf(false) }
 
     var petMessage by remember { mutableStateOf("¡Miau! ¿Qué quieres, humano? 😼") }
     var moodExpression by remember { mutableStateOf("😼") }
     val coroutineScope = rememberCoroutineScope()
 
-    // Animación de flotación suave arriba y abajo (movimiento constante)
+    // Animación de flotación suave arriba y abajo
     val infiniteTransition = rememberInfiniteTransition(label = "floating")
     val offsetY by infiniteTransition.animateFloat(
         initialValue = -15f,
@@ -50,7 +110,7 @@ fun MiaubertoPetScreen(currentUser: UserProfile) {
     // Reducción automática de estadísticas con el tiempo
     LaunchedEffect(Unit) {
         while (true) {
-            delay(15000L) // Cada 15 segundos baja un poco
+            delay(15000L)
             if (!isSleeping) {
                 hunger = (hunger - 3).coerceAtLeast(0)
                 happiness = (happiness - 2).coerceAtLeast(0)
@@ -81,7 +141,6 @@ fun MiaubertoPetScreen(currentUser: UserProfile) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            // Título de la Mascota
             Text(
                 text = "🐾 Mascota Virtual: Miauberto",
                 color = MiaubertoRed,
@@ -89,7 +148,7 @@ fun MiaubertoPetScreen(currentUser: UserProfile) {
                 fontWeight = FontWeight.Black
             )
 
-            // Panel de Estadísticas (Barras Tamagotchi)
+            // Panel de Estadísticas
             Card(
                 colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
                 shape = RoundedCornerShape(14.dp),
@@ -106,7 +165,7 @@ fun MiaubertoPetScreen(currentUser: UserProfile) {
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Burbuja de diálogo de Miauberto
+            // Burbuja de diálogo
             Card(
                 colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
                 shape = RoundedCornerShape(16.dp),
@@ -133,23 +192,23 @@ fun MiaubertoPetScreen(currentUser: UserProfile) {
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Mascota Animada Flotante en Pantalla
+            // Mascota Animada Flotante (Con voz rasposa al tocarla)
             Box(
                 modifier = Modifier
                     .size(160.dp)
-                    .offset(y = offsetY.dp) // Aplica el movimiento flotante continuo
+                    .offset(y = offsetY.dp)
                     .clip(CircleShape)
                     .background(MiaubertoCardBg)
                     .border(3.dp, if (isSleeping) Color(0xFF3B82F6) else MiaubertoRed, CircleShape)
                     .clickable {
-                        // Interacción al tocar a la mascota
                         if (isSleeping) {
                             petMessage = "¡Zzz... No me molestes mientras duermo en las sombras! 🌙"
                         } else {
                             happiness = (happiness + 5).coerceAtMost(100)
+                            playMiaubertoRaspyVoice(0) // Reproduce gruñido rasposo
                             val reactions = listOf(
                                 "¡No me toques con tus manos sucias, humano! 😾",
-                                "¡Purrr... bueno, un rasguño en la barbilla pasa. 😼",
+                                "¡Grrr... más te vale que tengas pizza para compensar esto. 😼",
                                 "¡De calladito te ves más bonito! 🐾",
                                 "¡Exijo una Coca-Cola inmediatamente! 🥤"
                             )
@@ -172,7 +231,7 @@ fun MiaubertoPetScreen(currentUser: UserProfile) {
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Botones de Interacción (Cuidar a la Mascota)
+            // Botones de Interacción
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -181,7 +240,8 @@ fun MiaubertoPetScreen(currentUser: UserProfile) {
                     onClick = {
                         hunger = (hunger + 25).coerceAtMost(100)
                         energy = (energy + 10).coerceAtMost(100)
-                        petMessage = "¡Mmm! Pizza y tacos deliciosos. Mi venganza mundial puede continuar. 🍕🌮"
+                        playMiaubertoRaspyVoice(1) // Ronroneo rasposo de satisfacción
+                        petMessage = "¡Mmm... Purrr! Pizza y tacos aceptados. Mi venganza continúa. 🍕🌮"
                         moodExpression = "😼"
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MiaubertoRed),
@@ -219,86 +279,4 @@ fun MiaubertoPetScreen(currentUser: UserProfile) {
             }
         }
     }
-}
-
-@Composable
-fun StatBar(label: String, progress: Float, color: Color) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(label, color = MiaubertoTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            Text("${(progress * 100).toInt()}%", color = MiaubertoTextSecondary, fontSize = 11.sp)
-        }
-        LinearProgressIndicator(
-            progress = { progress },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .clip(RoundedCornerShape(3.dp)),
-            color = color,
-            trackColor = MiaubertoDarkBtn,
-        )
-    }
-    fun playMiaubertoRaspyVoice(actionType: Int) {
-    try {
-        val sampleRate = 11025
-        val durationMs = when (actionType) {
-            0 -> 350 // Gruñido al tocarlo
-            1 -> 250 // Ronroneo rasposo al alimentar
-            else -> 400 // Maullido ronco y largo
-        }
-        val numSamples = (durationMs * sampleRate) / 1000
-        val sample = ByteArray(numSamples * 2)
-
-        for (i in 0 until numSamples) {
-            val t = i.toDouble() / sampleRate
-            // Frecuencias muy graves y rasposas (tono de gato enojado o ronco: 75Hz - 120Hz)
-            val baseFreq = when (actionType) {
-                0 -> 85.0 + Math.sin(t * 30.0) * 15.0 // Gruñido oscilante
-                1 -> 110.0 // Ronroneo constante
-                else -> 95.0
-            }
-            
-            val angle = 2.0 * Math.PI * baseFreq * t
-            // Combinamos onda cuadrada con ruido blanco pesado para dar el efecto de "garganta rasposa"
-            val squareWave = if (Math.sin(angle) > 0) 1.0 else -1.0
-            val harshNoise = (Math.random() * 2.0 - 1.0) * 0.6
-            
-            val rawVal = (squareWave * 0.4 + harshNoise * 0.6)
-            
-            // Envolvente de volumen (sube rápido y decae)
-            val envelope = if (i < 1000) {
-                i.toDouble() / 1000.0
-            } else {
-                (numSamples - i).toDouble() / (numSamples - 1000).coerceAtLeast(1).toDouble()
-            }
-
-            val finalVal = (rawVal * envelope * 22000.0).toInt().coerceIn(-32768, 32767).toShort()
-            sample[2 * i] = (finalVal.toInt() and 0x00ff).toByte()
-            sample[2 * i + 1] = ((finalVal.toInt() and 0xff00) ushr 8).toByte()
-        }
-
-        val audioTrack = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build()
-            )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setSampleRate(sampleRate)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .build()
-            )
-            .setBufferSizeInBytes(sample.size)
-            .setTransferMode(AudioTrack.MODE_STATIC)
-            .build()
-
-        audioTrack.write(sample, 0, sample.size)
-        audioTrack.play()
-    } catch (e: Exception) {
-        e.printStackTrace()
-    }
-}
 }
