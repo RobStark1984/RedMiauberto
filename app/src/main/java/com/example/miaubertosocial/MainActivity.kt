@@ -115,7 +115,7 @@ data class Post(
     val avatarBase64: String? = null,
     val content: String,
     val postImageBase64: String? = null,
-    val mediaType: String? = null, // "image", "audio", "musicdj", "sticker"
+    val mediaType: String? = null, // "image", "audio", "musicdj", "sticker", "miniestudio"
     val mediaBase64: String? = null,
     val timestamp: String,
     val likesList: List<String> = emptyList(),
@@ -176,6 +176,7 @@ fun saveBitmapToGallery(context: Context, bitmap: Bitmap, title: String): Boolea
         false
     }
 }
+
 fun uriToBase64(context: Context, uri: Uri, maxSize: Int = 300): String? {
     return try {
         val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
@@ -686,8 +687,9 @@ fun MiaubertoMainScreen(
     onProfileUpdated: (UserProfile) -> Unit,
     onLogout: () -> Unit
 ) {
-    var selectedTab by remember { mutableStateOf(0) } // 0: Muro, 1: Perfil, 2: MusicDJ, 3: Casino
+    var selectedTab by remember { mutableStateOf(0) } // 0: Muro, 1: Perfil, 2: Guarida del Ocio (MusicDJ + Casino + Miniestudio)
     var viewedProfileUid by remember { mutableStateOf<String?>(null) }
+    var arcadeSubTab by remember { mutableStateOf(0) } // 0: MusicDJ, 1: Casino Felino, 2: Miniestudio de Voz
 
     val db = remember { FirebaseFirestore.getInstance() }
     val auth = remember { FirebaseAuth.getInstance() }
@@ -726,6 +728,13 @@ fun MiaubertoMainScreen(
     // ESTADOS PARA CASINO FELINO
     var isSpinningWheel by remember { mutableStateOf(false) }
     var spinResultText = remember { mutableStateOf(currentUser.casinoTitle) }
+
+    // ESTADOS PARA MINIESTUDIO DE GRABACIÓN VOCAL 🎙️🎶
+    var studioBeatType by remember { mutableStateOf(0) } // 0: Pop Rock, 1: Electro Miau, 2: Balada Romántica
+    var isPlayingStudioBeat by remember { mutableStateOf(false) }
+    var isStudioRecording by remember { mutableStateOf(false) }
+    var studioRecordedFile by remember { mutableStateOf<File?>(null) }
+    var studioMediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
 
     // ESTADOS PARA STICKERS Y MEMES DEL GREMIO
     var guildStickers by remember { mutableStateOf<List<GuildSticker>>(emptyList()) }
@@ -920,7 +929,7 @@ fun MiaubertoMainScreen(
                         viewedProfileUid = null
                     },
                     icon = { Text("🌐", fontSize = 18.sp) },
-                    label = { Text("Muro", fontSize = 10.sp, color = if (selectedTab == 0 && viewedProfileUid == null) MiaubertoRed else MiaubertoTextSecondary) }
+                    label = { Text("Muro", fontSize = 11.sp, color = if (selectedTab == 0 && viewedProfileUid == null) MiaubertoRed else MiaubertoTextSecondary) }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 1 && viewedProfileUid == null,
@@ -929,7 +938,7 @@ fun MiaubertoMainScreen(
                         viewedProfileUid = null
                     },
                     icon = { Text("👤", fontSize = 18.sp) },
-                    label = { Text("Perfil", fontSize = 10.sp, color = if (selectedTab == 1 && viewedProfileUid == null) MiaubertoRed else MiaubertoTextSecondary) }
+                    label = { Text("Perfil", fontSize = 11.sp, color = if (selectedTab == 1 && viewedProfileUid == null) MiaubertoRed else MiaubertoTextSecondary) }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 2,
@@ -937,17 +946,8 @@ fun MiaubertoMainScreen(
                         selectedTab = 2
                         viewedProfileUid = null
                     },
-                    icon = { Text("🎵", fontSize = 18.sp) },
-                    label = { Text("MusicDJ", fontSize = 10.sp, color = if (selectedTab == 2) MiaubertoRed else MiaubertoTextSecondary) }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 3,
-                    onClick = {
-                        selectedTab = 3
-                        viewedProfileUid = null
-                    },
-                    icon = { Text("🎰", fontSize = 18.sp) },
-                    label = { Text("Casino", fontSize = 10.sp, color = if (selectedTab == 3) MiaubertoRed else MiaubertoTextSecondary) }
+                    icon = { Text("🎮", fontSize = 18.sp) },
+                    label = { Text("La Guarida", fontSize = 11.sp, color = if (selectedTab == 2) MiaubertoRed else MiaubertoTextSecondary) }
                 )
             }
         },
@@ -959,105 +959,8 @@ fun MiaubertoMainScreen(
             else -> posts
         }
 
-        if (selectedTab == 3) {
-            // VISTA CASINO FELINO 🎰
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(2.dp, MiaubertoGold, RoundedCornerShape(20.dp))
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text("🎰 CASINO FELINO 🎰", color = MiaubertoGold, fontSize = 22.sp, fontWeight = FontWeight.Black)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text("Gira la ruleta del destino para ganar títulos legendarios en el Gremio.", color = MiaubertoTextSecondary, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        Surface(
-                            color = MiaubertoBg,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .border(1.dp, MiaubertoRed, RoundedCornerShape(12.dp))
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text("Tu Rango Actual:", color = MiaubertoTextSecondary, fontSize = 11.sp)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = spinResultText.value,
-                                    color = MiaubertoGold,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        Button(
-                            onClick = {
-                                if (!isSpinningWheel) {
-                                    isSpinningWheel = true
-                                    coroutineScope.launch(Dispatchers.Default) {
-                                        val possibleTitles = listOf(
-                                            "👑 Emperador de las Sombras",
-                                            "😼 Michi Hacker Élite",
-                                            "🐾 Señor Supremo de las Croquetas",
-                                            "⚡ Mente Maestra Felina",
-                                            "🌙 Guardián de la Noche Oscura",
-                                            "🎯 Francotirador de Lasser",
-                                            "🍕 Don Gato de la Pizza",
-                                            "🎸 Leyenda del MusicDJ"
-                                        )
-
-                                        for (i in 0..10) {
-                                            spinResultText.value = possibleTitles.random()
-                                            delay(100L)
-                                        }
-
-                                        val finalTitle = possibleTitles.random()
-                                        spinResultText.value = finalTitle
-                                        isSpinningWheel = false
-
-                                        db.collection("users").document(currentUser.uid)
-                                            .update("casinoTitle", finalTitle)
-                                    }
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = MiaubertoRed),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(50.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            enabled = !isSpinningWheel
-                        ) {
-                            if (isSpinningWheel) {
-                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
-                            } else {
-                                Text("🎲 ¡Girar la Ruleta Mágica!", fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-            }
-        } else if (selectedTab == 2) {
-            // VISTA MUSIC DJ AMPLIADA
+        if (selectedTab == 2) {
+            // TABLERO UNIFICADO: LA GUARIDA DEL OCIO (MusicDJ, Casino Felino y Miniestudio de Voz)
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1065,116 +968,155 @@ fun MiaubertoMainScreen(
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth().border(1.dp, MiaubertoBorder, RoundedCornerShape(16.dp))
+                // Selector de pestañas internas del tablero
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MiaubertoCardBg, RoundedCornerShape(12.dp))
+                        .padding(4.dp)
+                        .border(1.dp, MiaubertoBorder, RoundedCornerShape(12.dp)),
+                    horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    Column(modifier = Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("🎶 MusicDJ™ - 16 Pasos", color = MiaubertoRed, fontSize = 18.sp, fontWeight = FontWeight.Black)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text("Composición extendida con instrumentos de alta fidelidad retro.", color = MiaubertoTextSecondary, fontSize = 11.sp)
+                    Button(
+                        onClick = { arcadeSubTab = 0 },
+                        colors = ButtonDefaults.buttonColors(containerColor = if (arcadeSubTab == 0) MiaubertoRed else Color.Transparent),
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("🎵 MusicDJ", fontSize = 11.sp, color = if (arcadeSubTab == 0) Color.White else MiaubertoTextSecondary, fontWeight = FontWeight.Bold)
+                    }
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                    Button(
+                        onClick = { arcadeSubTab = 1 },
+                        colors = ButtonDefaults.buttonColors(containerColor = if (arcadeSubTab == 1) MiaubertoRed else Color.Transparent),
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("🎰 Casino", fontSize = 11.sp, color = if (arcadeSubTab == 1) Color.White else MiaubertoTextSecondary, fontWeight = FontWeight.Bold)
+                    }
 
-                        val trackIcons = listOf("🥁 Batería", "🎸 Bajo", "🎸 Guitarra", "🎹 Piano", "🎺 Trompeta")
-                        val baseFreqs = listOf(
-                            listOf(110.0, 146.8, 196.0),
-                            listOf(130.8, 164.8, 220.0),
-                            listOf(196.0, 246.9, 329.6),
-                            listOf(261.6, 329.6, 440.0),
-                            listOf(523.2, 659.2, 880.0)
-                        )
+                    Button(
+                        onClick = { arcadeSubTab = 2 },
+                        colors = ButtonDefaults.buttonColors(containerColor = if (arcadeSubTab == 2) MiaubertoRed else Color.Transparent),
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("🎙️ Miniestudio", fontSize = 11.sp, color = if (arcadeSubTab == 2) Color.White else MiaubertoTextSecondary, fontWeight = FontWeight.Bold)
+                    }
+                }
 
-                        for (trackIndex in 0..4) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(trackIcons[trackIndex], color = MiaubertoTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(75.dp))
-                                
-                                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    for (stepIndex in 0..15) {
-                                        val stateValue = musicGrid.value[trackIndex][stepIndex]
-                                        Box(
-                                            modifier = Modifier
-                                                .size(20.dp)
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .background(
-                                                    when (stateValue) {
-                                                        1 -> Color(0xFF10B981)
-                                                        2 -> Color(0xFF3B82F6)
-                                                        3 -> Color(0xFFF59E0B)
-                                                        else -> MiaubertoDarkBtn
-                                                    }
-                                                )
-                                                .border(0.5.dp, MiaubertoBorder, RoundedCornerShape(4.dp))
-                                                .clickable {
-                                                    val nextVal = (stateValue + 1) % 4
-                                                    musicGrid.value = musicGrid.value.mapIndexed { tIdx, row ->
-                                                        if (tIdx == trackIndex) {
-                                                            row.mapIndexed { sIdx, v -> if (sIdx == stepIndex) nextVal else v }.toIntArray()
-                                                        } else {
-                                                            row
+                if (arcadeSubTab == 0) {
+                    // VISTA MUSIC DJ AMPLIADA
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth().border(1.dp, MiaubertoBorder, RoundedCornerShape(16.dp))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("🎶 MusicDJ™ - 16 Pasos", color = MiaubertoRed, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text("Composición extendida con instrumentos de alta fidelidad retro.", color = MiaubertoTextSecondary, fontSize = 11.sp)
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            val trackIcons = listOf("🥁 Batería", "🎸 Bajo", "🎸 Guitarra", "🎹 Piano", "🎺 Trompeta")
+                            val baseFreqs = listOf(
+                                listOf(110.0, 146.8, 196.0),
+                                listOf(130.8, 164.8, 220.0),
+                                listOf(196.0, 246.9, 329.6),
+                                listOf(261.6, 329.6, 440.0),
+                                listOf(523.2, 659.2, 880.0)
+                            )
+
+                            for (trackIndex in 0..4) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(trackIcons[trackIndex], color = MiaubertoTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(75.dp))
+                                    
+                                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        for (stepIndex in 0..15) {
+                                            val stateValue = musicGrid.value[trackIndex][stepIndex]
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(19.dp)
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .background(
+                                                        when (stateValue) {
+                                                            1 -> Color(0xFF10B981)
+                                                            2 -> Color(0xFF3B82F6)
+                                                            3 -> Color(0xFFF59E0B)
+                                                            else -> MiaubertoDarkBtn
                                                         }
-                                                    }.toTypedArray()
+                                                    )
+                                                    .border(0.5.dp, MiaubertoBorder, RoundedCornerShape(4.dp))
+                                                    .clickable {
+                                                        val nextVal = (stateValue + 1) % 4
+                                                        musicGrid.value = musicGrid.value.mapIndexed { tIdx, row ->
+                                                            if (tIdx == trackIndex) {
+                                                                row.mapIndexed { sIdx, v -> if (sIdx == stepIndex) nextVal else v }.toIntArray()
+                                                            } else {
+                                                                row
+                                                            }
+                                                        }.toTypedArray()
 
-                                                    if (nextVal > 0) {
-                                                        playInstrumentTone(baseFreqs[trackIndex][nextVal - 1], trackIndex, 180)
-                                                    }
-                                                },
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            if (stateValue > 0) {
-                                                Text("$stateValue", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                                        if (nextVal > 0) {
+                                                            playInstrumentTone(baseFreqs[trackIndex][nextVal - 1], trackIndex, 180)
+                                                        }
+                                                    },
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                if (stateValue > 0) {
+                                                    Text("$stateValue", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
-                        }
 
-                        Spacer(modifier = Modifier.height(14.dp))
+                            Spacer(modifier = Modifier.height(14.dp))
 
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(
-                                onClick = {
-                                    if (!isPlayingMusicDJ) {
-                                        isPlayingMusicDJ = true
-                                        coroutineScope.launch(Dispatchers.Default) {
-                                            for (step in 0..15) {
-                                                if (!isPlayingMusicDJ) break
-                                                for (track in 0..4) {
-                                                    val note = musicGrid.value[track][step]
-                                                    if (note > 0) {
-                                                        val freqs = baseFreqs[track]
-                                                        playInstrumentTone(freqs[note - 1], track, 180)
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = {
+                                        if (!isPlayingMusicDJ) {
+                                            isPlayingMusicDJ = true
+                                            coroutineScope.launch(Dispatchers.Default) {
+                                                for (step in 0..15) {
+                                                    if (!isPlayingMusicDJ) break
+                                                    for (track in 0..4) {
+                                                        val note = musicGrid.value[track][step]
+                                                        if (note > 0) {
+                                                            val freqs = baseFreqs[track]
+                                                            playInstrumentTone(freqs[note - 1], track, 180)
+                                                        }
                                                     }
+                                                    delay(180L)
                                                 }
-                                                delay(180L)
+                                                isPlayingMusicDJ = false
                                             }
-                                            isPlayingMusicDJ = false
                                         }
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = MiaubertoRed),
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text(if (isPlayingMusicDJ) "Reproduciendo... 🎶" else "Reproducir Melodía ▶️", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MiaubertoRed),
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(if (isPlayingMusicDJ) "Reproduciendo... 🎶" else "Reproducir ▶️", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
 
-                            Button(
-                                onClick = {
-                                    var serializedMelody = ""
-                                    for (t in 0..4) {
-                                        for (s in 0..15) {
-                                            serializedMelody += musicGrid.value[t][s].toString()
+                                Button(
+                                    onClick = {
+                                        var serializedMelody = ""
+                                        for (t in 0..4) {
+                                            for (s in 0..15) {
+                                                serializedMelody += musicGrid.value[t][s].toString()
+                                            }
                                         }
-                                    }
 
-                                    val newPostMap = hashMapOf(
+                                        val newPostMap = hashMapOf(
                                             "authorUid" to currentUser.uid,
                                             "authorName" to currentUser.name,
                                             "username" to currentUser.username,
@@ -1186,16 +1128,302 @@ fun MiaubertoMainScreen(
                                             "dislikesList" to emptyList<String>(),
                                             "commentsCount" to 0,
                                             "createdAt" to System.currentTimeMillis()
+                                        )
+                                        db.collection("posts").add(newPostMap).addOnSuccessListener {
+                                            selectedTab = 0
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MiaubertoGold),
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("Compartir Muro 🚀", fontSize = 11.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                } else if (arcadeSubTab == 1) {
+                    // VISTA CASINO FELINO 🎰
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(2.dp, MiaubertoGold, RoundedCornerShape(16.dp))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("🎰 CASINO FELINO 🎰", color = MiaubertoGold, fontSize = 20.sp, fontWeight = FontWeight.Black)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("Gira la ruleta del destino para ganar títulos legendarios.", color = MiaubertoTextSecondary, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+
+                            Spacer(modifier = Modifier.height(18.dp))
+
+                            Surface(
+                                color = MiaubertoBg,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .border(1.dp, MiaubertoRed, RoundedCornerShape(12.dp))
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text("Tu Rango Actual:", color = MiaubertoTextSecondary, fontSize = 11.sp)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = spinResultText.value,
+                                        color = MiaubertoGold,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
                                     )
-                                    db.collection("posts").add(newPostMap).addOnSuccessListener {
-                                        selectedTab = 0
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(18.dp))
+
+                            Button(
+                                onClick = {
+                                    if (!isSpinningWheel) {
+                                        isSpinningWheel = true
+                                        coroutineScope.launch(Dispatchers.Default) {
+                                            val possibleTitles = listOf(
+                                                "👑 Emperador de las Sombras",
+                                                "😼 Michi Hacker Élite",
+                                                "🐾 Señor Supremo de las Croquetas",
+                                                "⚡ Mente Maestra Felina",
+                                                "🌙 Guardián de la Noche Oscura",
+                                                "🎯 Francotirador de Lasser",
+                                                "🍕 Don Gato de la Pizza",
+                                                "🎸 Leyenda del MusicDJ"
+                                            )
+
+                                            for (i in 0..10) {
+                                                spinResultText.value = possibleTitles.random()
+                                                delay(100L)
+                                            }
+
+                                            val finalTitle = possibleTitles.random()
+                                            spinResultText.value = finalTitle
+                                            isSpinningWheel = false
+
+                                            db.collection("users").document(currentUser.uid)
+                                                .update("casinoTitle", finalTitle)
+                                        }
                                     }
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = MiaubertoGold),
-                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = MiaubertoRed),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(46.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                enabled = !isSpinningWheel
+                            ) {
+                                if (isSpinningWheel) {
+                                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp))
+                                } else {
+                                    Text("🎲 ¡Girar la Ruleta Mágica!", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // VISTA MINIESTUDIO DE GRABACIÓN VOCAL 🎙️🎶
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth().border(1.dp, MiaubertoBorder, RoundedCornerShape(16.dp))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("🎙️ Miniestudio Vocal 🎶", color = MiaubertoRed, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text("Elige una pista base, pon audífonos y grábate cantando tu tema.", color = MiaubertoTextSecondary, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            // Selector de pista
+                            val beatNames = listOf("🎵 Pista 1: Pop Rock Gremio", "⚡ Pista 2: Electro Miau", "🌙 Pista 3: Balada Romántica")
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Pista Base:", color = MiaubertoTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Button(
+                                    onClick = {
+                                        studioBeatType = (studioBeatType + 1) % 3
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MiaubertoDarkBtn),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(beatNames[studioBeatType], fontSize = 11.sp, color = MiaubertoGold)
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Reproducir pista de fondo
+                            Button(
+                                onClick = {
+                                    if (!isPlayingStudioBeat) {
+                                        isPlayingStudioBeat = true
+                                        coroutineScope.launch(Dispatchers.Default) {
+                                            val beatFreqs = when (studioBeatType) {
+                                                0 -> listOf(261.6, 329.6, 392.0, 523.2) // Pop
+                                                1 -> listOf(130.8, 196.0, 261.6, 329.6) // Electro
+                                                else -> listOf(220.0, 246.9, 329.6, 440.0) // Balada
+                                            }
+                                            for (loop in 0..8) {
+                                                if (!isPlayingStudioBeat) break
+                                                for (f in beatFreqs) {
+                                                    if (!isPlayingStudioBeat) break
+                                                    playInstrumentTone(f, 3, 250)
+                                                    delay(250L)
+                                                }
+                                            }
+                                            isPlayingStudioBeat = false
+                                        }
+                                    } else {
+                                        isPlayingStudioBeat = false
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = if (isPlayingStudioBeat) Color(0xFF10B981) else MiaubertoDarkBtn),
+                                modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(8.dp)
                             ) {
-                                Text("Compartir en Muro 🚀", fontSize = 11.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                                Text(if (isPlayingStudioBeat) "🔊 Pista Reproduciéndose..." else "▶️ Reproducir Pista Base", fontSize = 12.sp, color = Color.White)
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Divider(color = MiaubertoBorder, thickness = 0.8.dp)
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            // Controles de Grabación de Voz
+                            Text(
+                                text = if (isStudioRecording) "🔴 Grabando tu voz..." else (if (studioRecordedFile != null) "✅ ¡Voz grabada con éxito!" else "🎤 Listo para grabar tu voz"),
+                                color = if (isStudioRecording) MiaubertoRed else MiaubertoTextPrimary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = {
+                                        val permissionCheck = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
+                                        if (permissionCheck == PackageManager.PERMISSION_GRANTED) {
+                                            try {
+                                                val outputDir = context.cacheDir
+                                                val audioFile = File.createTempFile("studio_voice_", ".3gp", outputDir)
+                                                val recorder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                                    MediaRecorder(context)
+                                                } else {
+                                                    MediaRecorder()
+                                                }.apply {
+                                                    setAudioSource(MediaRecorder.AudioSource.MIC)
+                                                    setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
+                                                    setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
+                                                    setOutputFile(audioFile.absolutePath)
+                                                    prepare()
+                                                    start()
+                                                }
+                                                mediaRecorder = recorder
+                                                studioRecordedFile = audioFile
+                                                isStudioRecording = true
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
+                                            }
+                                        } else {
+                                            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MiaubertoRed),
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    enabled = !isStudioRecording
+                                ) {
+                                    Text("Grabar 🔴", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                Button(
+                                    onClick = {
+                                        try {
+                                            mediaRecorder?.stop()
+                                            mediaRecorder?.release()
+                                            mediaRecorder = null
+                                            isStudioRecording = false
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MiaubertoDarkBtn),
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    enabled = isStudioRecording
+                                ) {
+                                    Text("Detener ⏹️", fontSize = 12.sp, color = Color.White)
+                                }
+                            }
+
+                            if (studioRecordedFile != null) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Button(
+                                    onClick = {
+                                        try {
+                                            studioMediaPlayer?.release()
+                                            studioMediaPlayer = MediaPlayer().apply {
+                                                setDataSource(studioRecordedFile!!.absolutePath)
+                                                prepare()
+                                                start()
+                                            }
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MiaubertoDarkBtn),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("Escuchar Grabación 🔊", fontSize = 12.sp, color = MiaubertoGold)
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Button(
+                                    onClick = {
+                                        val base64Audio = fileToBase64(studioRecordedFile!!, "data:audio/3gpp;base64")
+                                        if (base64Audio != null) {
+                                            val newPostMap = hashMapOf(
+                                                "authorUid" to currentUser.uid,
+                                                "authorName" to currentUser.name,
+                                                "username" to currentUser.username,
+                                                "avatarBase64" to currentUser.avatarBase64,
+                                                "content" to "¡He grabado mi propia canción / cover en el Miniestudio Vocal! 🎤🎶",
+                                                "mediaType" to "audio",
+                                                "mediaBase64" to base64Audio,
+                                                "likesList" to emptyList<String>(),
+                                                "dislikesList" to emptyList<String>(),
+                                                "commentsCount" to 0,
+                                                "createdAt" to System.currentTimeMillis()
+                                            )
+                                            db.collection("posts").add(newPostMap).addOnSuccessListener {
+                                                selectedTab = 0
+                                            }
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MiaubertoGold),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("Publicar Canción en el Muro 🚀", fontSize = 12.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -1707,7 +1935,7 @@ fun MiaubertoMainScreen(
         }
     }
 
-    // MODAL SELECCIONAR STICKER (CON OPCIÓN DE GUARDAR PARA WHATSAPP)
+    // MODAL SELECCIONAR STICKER
     if (showStickerPickerModal) {
         AlertDialog(
             onDismissRequest = { showStickerPickerModal = false },
@@ -2397,9 +2625,9 @@ fun PostItemCard(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = "🎙️ Nota de voz del Gremio",
+                                    text = "🎙️ Nota de voz o Canción del Gremio",
                                     color = MiaubertoTextPrimary,
-                                    fontSize = 13.sp,
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
                                 )
 
@@ -2561,7 +2789,7 @@ fun PostItemCard(
                     Row(
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(vertical = `post`.likesList.size.let { 8.dp }) // safe
+                        modifier = Modifier.padding(vertical = 8.dp)
                     ) {
                         Text(
                             text = "😾 Gruñir",
@@ -2584,7 +2812,7 @@ fun PostItemCard(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(vertical = 8.dp)
                     ) {
-                        Text("💬 Opinar", color = MiaubertoTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("💬 Opinar", color = MiaubertoTextSecondary, fontSize = 11.sp,fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -2594,7 +2822,7 @@ fun PostItemCard(
                     modifier = Modifier.weight(1f)
                 ) {
                     Row(
-                        horizontalArrangement = Arrangement.Center,
+                        horizontalArrangement = Alignment.Center,
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .padding(vertical = 8.dp)
