@@ -20,7 +20,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 // Función para generar la voz rasposa y ronca de Miauberto
 fun playMiaubertoRaspyVoice(actionType: Int) {
@@ -85,7 +84,6 @@ fun playMiaubertoRaspyVoice(actionType: Int) {
 
 @Composable
 fun MiaubertoPetScreen(currentUser: UserProfile) {
-    // Estados de la Mascota Tamagotchi
     var hunger by remember { mutableStateOf(80) }
     var happiness by remember { mutableStateOf(90) }
     var energy by remember { mutableStateOf(85) }
@@ -93,9 +91,7 @@ fun MiaubertoPetScreen(currentUser: UserProfile) {
 
     var petMessage by remember { mutableStateOf("¡Miau! ¿Qué quieres, humano? 😼") }
     var moodExpression by remember { mutableStateOf("😼") }
-    val coroutineScope = rememberCoroutineScope()
 
-    // Animación de flotación suave arriba y abajo
     val infiniteTransition = rememberInfiniteTransition(label = "floating")
     val offsetY by infiniteTransition.animateFloat(
         initialValue = -15f,
@@ -107,7 +103,6 @@ fun MiaubertoPetScreen(currentUser: UserProfile) {
         label = "floatingOffset"
     )
 
-    // Reducción automática de estadísticas con el tiempo
     LaunchedEffect(Unit) {
         while (true) {
             delay(15000L)
@@ -148,7 +143,6 @@ fun MiaubertoPetScreen(currentUser: UserProfile) {
                 fontWeight = FontWeight.Black
             )
 
-            // Panel de Estadísticas
             Card(
                 colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
                 shape = RoundedCornerShape(14.dp),
@@ -165,7 +159,6 @@ fun MiaubertoPetScreen(currentUser: UserProfile) {
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Burbuja de diálogo
             Card(
                 colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
                 shape = RoundedCornerShape(16.dp),
@@ -192,7 +185,6 @@ fun MiaubertoPetScreen(currentUser: UserProfile) {
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Mascota Animada Flotante (Con voz rasposa al tocarla)
             Box(
                 modifier = Modifier
                     .size(160.dp)
@@ -205,7 +197,7 @@ fun MiaubertoPetScreen(currentUser: UserProfile) {
                             petMessage = "¡Zzz... No me molestes mientras duermo en las sombras! 🌙"
                         } else {
                             happiness = (happiness + 5).coerceAtMost(100)
-                            playMiaubertoRaspyVoice(0) // Reproduce gruñido rasposo
+                            playMiaubertoRaspyVoice(0)
                             val reactions = listOf(
                                 "¡No me toques con tus manos sucias, humano! 😾",
                                 "¡Grrr... más te vale que tengas pizza para compensar esto. 😼",
@@ -231,7 +223,6 @@ fun MiaubertoPetScreen(currentUser: UserProfile) {
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Botones de Interacción
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -240,7 +231,7 @@ fun MiaubertoPetScreen(currentUser: UserProfile) {
                     onClick = {
                         hunger = (hunger + 25).coerceAtMost(100)
                         energy = (energy + 10).coerceAtMost(100)
-                        playMiaubertoRaspyVoice(1) // Ronroneo rasposo de satisfacción
+                        playMiaubertoRaspyVoice(1)
                         petMessage = "¡Mmm... Purrr! Pizza y tacos aceptados. Mi venganza continúa. 🍕🌮"
                         moodExpression = "😼"
                     },
@@ -278,5 +269,24 @@ fun MiaubertoPetScreen(currentUser: UserProfile) {
                 }
             }
         }
+    }
+}
+
+@Composable
+fun StatBar(label: String, progress: Float, color: Color) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label, color = MiaubertoTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text("${(progress * 100).toInt()}%", color = MiaubertoTextSecondary, fontSize = 11.sp)
+        }
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp)),
+            color = color,
+            trackColor = MiaubertoDarkBtn,
+        )
     }
 }
