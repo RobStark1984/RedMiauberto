@@ -113,6 +113,13 @@ data class GuildSticker(
     val imageBase64: String = ""
 )
 
+data class ChatMessage(
+    val id: String = "",
+    val sender: String = "", // "user" o "miauberto"
+    val text: String = "",
+    val timestamp: Long = 0L
+)
+
 data class Post(
     val id: String,
     val authorUid: String = "",
@@ -121,7 +128,7 @@ data class Post(
     val avatarBase64: String? = null,
     val content: String,
     val postImageBase64: String? = null,
-    val mediaType: String? = null, // "image", "audio", "musicdj", "sticker"
+    val mediaType: String? = null,
     val mediaBase64: String? = null,
     val timestamp: String,
     val likesList: List<String> = emptyList(),
@@ -734,7 +741,7 @@ fun MiaubertoMainScreen(
 ) {
     var selectedTab by remember { mutableStateOf(0) }
     var viewedProfileUid by remember { mutableStateOf<String?>(null) }
-    var arcadeSubTab by remember { mutableStateOf(0) }
+    var arcadeSubTab by remember { mutableStateOf(0) } // 0: MusicDJ, 1: Casino, 2: Miniestudio, 3: Chat IA Miauberto
 
     // ESTADO DEL MENSAJE FLOTANTE DE MIAUBERTO 😼💬
     var showMiaubertoFloatingBubble by remember { mutableStateOf(true) }
@@ -744,7 +751,7 @@ fun MiaubertoMainScreen(
             "¡Cuidado con lo que publicas, te estoy observando 🐾!",
             "¡Bienvenido a mi guarida, humano malvado!",
             "¡Haz girar la ruleta del casino si te atreves! 🎰",
-            "¡La música del MusicDJ resuena en las sombras! 🎶"
+            "¡Háblame en el chat de La Guarida si estás aburrido! 💬"
         )
     }
     var currentFloatingMessage by remember { mutableStateOf("¡De calladito te vez mas bonito! 😼") }
@@ -793,6 +800,11 @@ fun MiaubertoMainScreen(
     var isStudioRecording by remember { mutableStateOf(false) }
     var studioRecordedFile by remember { mutableStateOf<File?>(null) }
     var studioMediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+
+    // ESTADOS PARA CHAT CON MIAUBERTO 💬🧠
+    var chatMessages by remember { mutableStateOf<List<ChatMessage>>(emptyList()) }
+    var chatInputText by remember { mutableStateOf("") }
+    var isMiaubertoTyping by remember { mutableStateOf(false) }
 
     // ESTADOS PARA STICKERS Y MEMES DEL GREMIO
     var guildStickers by remember { mutableStateOf<List<GuildSticker>>(emptyList()) }
@@ -848,6 +860,32 @@ fun MiaubertoMainScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         editAvatarUri = uri
+    }
+
+    LaunchedEffect(currentUser.uid) {
+        db.collection("users").document(currentUser.uid).collection("miauberto_chat")
+            .orderBy("timestamp", Query.Direction.ASCENDING)
+            .addSnapshotListener { snapshot, _ ->
+                if (snapshot != null) {
+                    chatMessages = snapshot.documents.map { doc ->
+                        ChatMessage(
+                            id = doc.id,
+                            sender = doc.getString("sender") ?: "miauberto",
+                            text = doc.getString("text") ?: "",
+                            timestamp = doc.getLong("timestamp") ?: 0L
+                        )
+                    }
+                    if (chatMessages.isEmpty()) {
+                        // Saludo inicial automático si no hay historial
+                        val welcomeMsg = hashMapOf(
+                            "sender" to "miauberto",
+                            "text" to "¡Miau! Soy Miauberto. Veo que andas por aquí aburrido. ¿Qué tramamos hoy, humano? 😼",
+                            "timestamp" to System.currentTimeMillis()
+                        )
+                        db.collection("users").document(currentUser.uid).collection("miauberto_chat").add(welcomeMsg)
+                    }
+                }
+            }
     }
 
     LaunchedEffect(Unit) {
@@ -1039,7 +1077,7 @@ fun MiaubertoMainScreen(
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text("🎵 MusicDJ", fontSize = 11.sp, color = if (arcadeSubTab == 0) Color.White else MiaubertoTextSecondary, fontWeight = FontWeight.Bold)
+                            Text("🎵 DJ", fontSize = 10.sp, color = if (arcadeSubTab == 0) Color.White else MiaubertoTextSecondary, fontWeight = FontWeight.Bold)
                         }
 
                         Button(
@@ -1048,7 +1086,7 @@ fun MiaubertoMainScreen(
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text("🎰 Casino", fontSize = 11.sp, color = if (arcadeSubTab == 1) Color.White else MiaubertoTextSecondary, fontWeight = FontWeight.Bold)
+                            Text("🎰 Casino", fontSize = 10.sp, color = if (arcadeSubTab == 1) Color.White else MiaubertoTextSecondary, fontWeight = FontWeight.Bold)
                         }
 
                         Button(
@@ -1057,7 +1095,16 @@ fun MiaubertoMainScreen(
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text("🎙️ Miniestudio", fontSize = 11.sp, color = if (arcadeSubTab == 2) Color.White else MiaubertoTextSecondary, fontWeight = FontWeight.Bold)
+                            Text("🎙️ Estudio", fontSize = 10.sp, color = if (arcadeSubTab == 2) Color.White else MiaubertoTextSecondary, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = { arcadeSubTab = 3 },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (arcadeSubTab == 3) MiaubertoRed else Color.Transparent),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("💬 Chat IA", fontSize = 10.sp, color = if (arcadeSubTab == 3) Color.White else MiaubertoTextSecondary, fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -1284,7 +1331,7 @@ fun MiaubertoMainScreen(
                                 }
                             }
                         }
-                    } else {
+                    } else if (arcadeSubTab == 2) {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
                             shape = RoundedCornerShape(16.dp),
@@ -1486,6 +1533,159 @@ fun MiaubertoMainScreen(
                                         shape = RoundedCornerShape(8.dp)
                                     ) {
                                         Text("Publicar Canción en el Muro 🚀", fontSize = 12.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // CHAT CON MIAUBERTO 💬🧠
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .fillMaxHeight()
+                                .border(1.dp, MiaubertoBorder, RoundedCornerShape(16.dp))
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Image(
+                                        painter = painterResource(id = R.drawable.app_logo),
+                                        contentDescription = "Miauberto IA",
+                                        modifier = Modifier.size(32.dp).clip(CircleShape).border(1.dp, MiaubertoRed, CircleShape),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Chat con Miauberto 💬", color = MiaubertoRed, fontSize = 16.sp, fontWeight = FontWeight.Black)
+                                }
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text("Plática con memoria guardada. ¡Dile adiós al aburrimiento!", color = MiaubertoTextSecondary, fontSize = 10.sp)
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                LazyColumn(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    items(chatMessages) { msg ->
+                                        val isMiauberto = msg.sender == "miauberto"
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = if (isMiauberto) Arrangement.Start else Arrangement.End
+                                        ) {
+                                            Surface(
+                                                color = if (isMiauberto) MiaubertoDarkBtn else MiaubertoRed,
+                                                shape = RoundedCornerShape(12.dp),
+                                                modifier = Modifier.widthIn(max = 260.dp)
+                                            ) {
+                                                Column(modifier = Modifier.padding(10.dp)) {
+                                                    Text(
+                                                        text = if (isMiauberto) "Miauberto 😼" else currentUser.name.split(" ")[0],
+                                                        color = if (isMiauberto) MiaubertoGold else Color.White,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                    Spacer(modifier = Modifier.height(2.dp))
+                                                    Text(
+                                                        text = msg.text,
+                                                        color = MiaubertoTextPrimary,
+                                                        fontSize = 13.sp,
+                                                        lineHeight = 17.sp
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (isMiaubertoTyping) {
+                                        item {
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+                                                Surface(
+                                                    color = MiaubertoDarkBtn,
+                                                    shape = RoundedCornerShape(12.dp)
+                                                ) {
+                                                    Text("Miauberto está pensando un plan malvado... 🐾", color = MiaubertoTextSecondary, fontSize = 11.sp, modifier = Modifier.padding(10.dp))
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    OutlinedTextField(
+                                        value = chatInputText,
+                                        onValueChange = { chatInputText = it },
+                                        placeholder = { Text("Escríbele a Miauberto...", color = MiaubertoTextSecondary, fontSize = 12.sp) },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedTextColor = MiaubertoTextPrimary,
+                                            unfocusedTextColor = MiaubertoTextPrimary,
+                                            focusedBorderColor = MiaubertoRed,
+                                            unfocusedBorderColor = MiaubertoBorder,
+                                            unfocusedContainerColor = MiaubertoBg,
+                                            focusedContainerColor = MiaubertoBg
+                                        )
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Button(
+                                        onClick = {
+                                            val textToSend = chatInputText.trim()
+                                            if (textToSend.isNotBlank() && !isMiaubertoTyping) {
+                                                chatInputText = ""
+                                                val userMsgMap = hashMapOf(
+                                                    "sender" to "user",
+                                                    "text" to textToSend,
+                                                    "timestamp" to System.currentTimeMillis()
+                                                )
+                                                val chatRef = db.collection("users").document(currentUser.uid).collection("miauberto_chat")
+                                                chatRef.add(userMsgMap)
+
+                                                isMiaubertoTyping = true
+                                                coroutineScope.launch(Dispatchers.Default) {
+                                                    delay(1200L) // Simula que piensa
+
+                                                    val replyText = when {
+                                                        textToSend.lowercase().contains("hola") || textToSend.lowercase().contains("que tal") -> "¡Miau! Qué milagro que te dignas a hablarme. ¿Qué se te ofrece, humano?"
+                                                        textToSend.lowercase().contains("aburrido") || textToSend.lowercase().contains("aburrimiento") -> "¡De calladito te vez mas bonito! Pero si insistes en hablar, vete a componer algo en el MusicDJ o a girar la ruleta del casino 🎰."
+                                                        textToSend.lowercase().contains("chiste") || textToSend.lowercase().contains("broma") -> "¿Qué hace un michi en la computadora? ¡Un miau-gale de código malvado! 😼 Jaja, qué gran chiste."
+                                                        textToSend.lowercase().contains("pizza") || textToSend.lowercase().contains("tacos") -> "¡Excelente gusto! Una buena pizza o unos tacos acompañados de Coca-Cola son dignos del Gremio Supremo 🍕."
+                                                        textToSend.lowercase().contains("quien eres") -> "Soy Miauberto, el soberano felino de esta red social. Estoy vigilando cada uno de tus pasos y guardando memoria de nuestra charla 🐾."
+                                                        else -> listOf(
+                                                            "Interesante lo que dices... Lo registraré en los archivos secretos del gremio 😼.",
+                                                            "¡Miau! Eso suena a que estás planeando algo contra las reglas. Me gusta.",
+                                                            "¡De calladito te vez mas bonito! Pero te perdono porque me trajiste croquetas virtuales.",
+                                                            "Sigue hablando, humano. Me entretienes mientras tomo mi café ☕.",
+                                                            "¿Estás seguro de eso? Recuerda que el Líder Supremo siempre tiene la última palabra 👑."
+                                                        ).random()
+                                                    }
+
+                                                    val miauMsgMap = hashMapOf(
+                                                        "sender" to "miauberto",
+                                                        "text" to replyText,
+                                                        "timestamp" to System.currentTimeMillis()
+                                                    )
+                                                    chatRef.add(miauMsgMap)
+                                                    isMiaubertoTyping = false
+                                                }
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = MiaubertoRed),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.height(48.dp)
+                                    ) {
+                                        Text("Enviar", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
@@ -2936,7 +3136,7 @@ fun PostItemCard(
                         .clickable { onCommentClick(post.id) }
                 ) {
                     Row(
-                        horizontalArrangement = Arrangement.Center,
+                        horizontalArrangement = Alignment.Center,
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(vertical = 8.dp)
                     ) {
@@ -2950,7 +3150,7 @@ fun PostItemCard(
                     modifier = Modifier.weight(1f)
                 ) {
                     Row(
-                        horizontalArrangement = Arrangement.Center,
+                        horizontalArrangement = Alignment.Center,
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .padding(vertical = 8.dp)
