@@ -153,18 +153,56 @@ fun fileToBase64(file: File, mimePrefix: String): String? {
     }
 }
 
-fun playTone(freq: Double, durationMs: Int = 200) {
+fun playInstrumentTone(freq: Double, instrumentType: Int, durationMs: Int = 220) {
     try {
-        val sampleRate = 8000
+        val sampleRate = 11025
         val numSamples = (durationMs * sampleRate) / 1000
         val sample = ByteArray(numSamples * 2)
+        
         for (i in 0 until numSamples) {
-            val angle = i * 2.0 * Math.PI * freq / sampleRate
-            val sinVal = Math.sin(angle)
-            val valShort = (sinVal * 32767).toInt().toShort()
-            sample[2 * i] = (valShort.toInt() and 0x00ff).toByte()
-            sample[2 * i + 1] = ((valShort.toInt() and 0xff00) ushr 8).toByte()
+            val t = i.toDouble() / sampleRate
+            val angle = 2.0 * Math.PI * freq * t
+            
+            // Modelado de onda según el instrumento para mayor realismo retro
+            val rawVal = when (instrumentType) {
+                0 -> { // 🥁 Batería (Ruido percusivo con caída rápida)
+                    val noise = (Math.random() * 2.0 - 1.0)
+                    noise * Math.exp(-t * 18.0)
+                }
+                1 -> { // 🎸 Bajo (Onda cuadrada con armónicos graves)
+                    val sq = if (Math.sin(angle) > 0) 1.0 else -1.0
+                    val sub = if (Math.sin(angle * 0.5) > 0) 0.5 else -0.5
+                    (sq * 0.7 + sub * 0.3) * Math.exp(-t * 4.0)
+                }
+                2 -> { // 🎸 Guitarra (Onda de diente de sierra simulada con sustain cálido)
+                    var saw = 0.0
+                    for (n in 1..4) {
+                        saw += Math.sin(angle * n) / n
+                    }
+                    saw * Math.exp(-t * 6.0)
+                }
+                3 -> { // 🎹 Piano (Onda senoidal con doble armónico brillante)
+                    (Math.sin(angle) + 0.5 * Math.sin(angle * 2.0) + 0.25 * Math.sin(angle * 3.0)) * Math.exp(-t * 5.0)
+                }
+                else -> { // 🎺 Trompeta (Onda pulsante brillante tipo chip de 8 bits)
+                    val pulse = if (Math.sin(angle) > 0) 0.8 else -0.8
+                    val harmonic = if (Math.sin(angle * 3.0) > 0) 0.2 else -0.2
+                    (pulse + harmonic) * Math.exp(-t * 5.0)
+                }
+            }
+
+            // Envolvente de volumen (Fade out limpio para evitar chasquidos)
+            val envelope = if (i > numSamples - 300) {
+                (numSamples - i).toDouble() / 300.0
+            } else {
+                1.0
+            }
+
+            val finalVal = (rawVal * envelope * 24000.0).toInt().coerceIn(-32768, 32767).toShort()
+            sample[2 * i] = (finalVal.toInt() and 0x00ff).toByte()
+            sample[2 * i + 1] = ((finalVal.toInt() and 0xff00) ushr 8).toByte()
         }
+
         val audioTrack = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -182,6 +220,7 @@ fun playTone(freq: Double, durationMs: Int = 200) {
             .setBufferSizeInBytes(sample.size)
             .setTransferMode(AudioTrack.MODE_STATIC)
             .build()
+        
         audioTrack.write(sample, 0, sample.size)
         audioTrack.play()
     } catch (e: Exception) {
@@ -621,9 +660,9 @@ fun MiaubertoMainScreen(
 
     var selectedPostForMod by remember { mutableStateOf<Post?>(null) }
 
-    // ESTADOS PARA MUSICDJ (5 pistas x 8 pasos: Batería, Bajo, Guitarra, Piano, Trompeta)
+    // ESTADOS PARA MUSICDJ AMPLIADO (5 pistas x 16 pasos)
     // 0: Ninguno, 1: Nota baja, 2: Nota media, 3: Nota alta
-    val musicGrid = remember { mutableStateOf(Array(5) { IntArray(8) { 0 } }) }
+    val musicGrid = remember { mutableStateOf(Array(5) { IntArray(16) { 0 } }) }
     var isPlayingMusicDJ by remember { mutableStateOf(false) }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -816,50 +855,50 @@ fun MiaubertoMainScreen(
         }
 
         if (selectedTab == 2) {
-            // VISTA MUSIC DJ CON GUITARRA INCLUIDA
+            // VISTA MUSIC DJ AMPLIADA (16 PASOS Y SONIDOS REALISTAS)
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MiaubertoCardBg),
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxWidth().border(1.dp, MiaubertoBorder, RoundedCornerShape(16.dp))
                 ) {
-                    Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("🎶 MusicDJ™ - Estudio Retro", color = MiaubertoRed, fontSize = 20.sp, fontWeight = FontWeight.Black)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text("Compón con Batería, Bajo, Guitarra, Piano y Trompeta.", color = MiaubertoTextSecondary, fontSize = 12.sp)
+                    Column(modifier = Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("🎶 MusicDJ™ - 16 Pasos", color = MiaubertoRed, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text("Composición extendida con instrumentos de alta fidelidad retro.", color = MiaubertoTextSecondary, fontSize = 11.sp)
 
-                        Spacer(modifier = Modifier.height(14.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
                         val trackIcons = listOf("🥁 Batería", "🎸 Bajo", "🎸 Guitarra", "🎹 Piano", "🎺 Trompeta")
                         val baseFreqs = listOf(
-                            listOf(120.0, 150.0, 180.0), // Batería
-                            listOf(220.0, 261.6, 329.6), // Bajo
-                            listOf(330.0, 392.0, 493.9), // Guitarra
-                            listOf(440.0, 523.2, 659.2), // Piano
-                            listOf(880.0, 1046.5, 1318.5) // Trompeta
+                            listOf(110.0, 146.8, 196.0), // Batería
+                            listOf(130.8, 164.8, 220.0), // Bajo
+                            listOf(196.0, 246.9, 329.6), // Guitarra
+                            listOf(261.6, 329.6, 440.0), // Piano
+                            listOf(523.2, 659.2, 880.0)  // Trompeta
                         )
 
                         for (trackIndex in 0..4) {
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text(trackIcons[trackIndex], color = MiaubertoTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(80.dp))
+                                Text(trackIcons[trackIndex], color = MiaubertoTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(75.dp))
                                 
-                                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                                    for (stepIndex in 0..7) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    for (stepIndex in 0..15) {
                                         val stateValue = musicGrid.value[trackIndex][stepIndex]
                                         Box(
                                             modifier = Modifier
-                                                .size(32.dp)
-                                                .clip(RoundedCornerShape(6.dp))
+                                                .size(20.dp)
+                                                .clip(RoundedCornerShape(4.dp))
                                                 .background(
                                                     when (stateValue) {
                                                         1 -> Color(0xFF10B981) // Verde
@@ -868,7 +907,7 @@ fun MiaubertoMainScreen(
                                                         else -> MiaubertoDarkBtn
                                                     }
                                                 )
-                                                .border(1.dp, MiaubertoBorder, RoundedCornerShape(6.dp))
+                                                .border(0.5.dp, MiaubertoBorder, RoundedCornerShape(4.dp))
                                                 .clickable {
                                                     val nextVal = (stateValue + 1) % 4
                                                     musicGrid.value = musicGrid.value.mapIndexed { tIdx, row ->
@@ -880,13 +919,13 @@ fun MiaubertoMainScreen(
                                                     }.toTypedArray()
 
                                                     if (nextVal > 0) {
-                                                        playTone(baseFreqs[trackIndex][nextVal - 1], 150)
+                                                        playInstrumentTone(baseFreqs[trackIndex][nextVal - 1], trackIndex, 180)
                                                     }
                                                 },
                                             contentAlignment = Alignment.Center
                                         ) {
                                             if (stateValue > 0) {
-                                                Text("$stateValue", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                Text("$stateValue", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                             }
                                         }
                                     }
@@ -894,24 +933,24 @@ fun MiaubertoMainScreen(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(18.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
 
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(
                                 onClick = {
                                     if (!isPlayingMusicDJ) {
                                         isPlayingMusicDJ = true
                                         coroutineScope.launch(Dispatchers.Default) {
-                                            for (step in 0..7) {
+                                            for (step in 0..15) {
                                                 if (!isPlayingMusicDJ) break
                                                 for (track in 0..4) {
                                                     val note = musicGrid.value[track][step]
                                                     if (note > 0) {
                                                         val freqs = baseFreqs[track]
-                                                        playTone(freqs[note - 1], 180)
+                                                        playInstrumentTone(freqs[note - 1], track, 180)
                                                     }
                                                 }
-                                                delay(250L)
+                                                delay(180L)
                                             }
                                             isPlayingMusicDJ = false
                                         }
@@ -921,15 +960,15 @@ fun MiaubertoMainScreen(
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(8.dp)
                             ) {
-                                Text(if (isPlayingMusicDJ) "Reproduciendo... 🎶" else "Reproducir Melodía ▶️", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(if (isPlayingMusicDJ) "Reproduciendo... 🎶" else "Reproducir Melodía ▶️", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
 
                             Button(
                                 onClick = {
-                                    // Publicar MusicDJ al Muro General (5 pistas x 8 pasos = 40 caracteres)
+                                    // Publicar MusicDJ al Muro General (5 pistas x 16 pasos = 80 caracteres)
                                     var serializedMelody = ""
                                     for (t in 0..4) {
-                                        for (s in 0..7) {
+                                        for (s in 0..15) {
                                             serializedMelody += musicGrid.value[t][s].toString()
                                         }
                                     }
@@ -939,7 +978,7 @@ fun MiaubertoMainScreen(
                                             "authorName" to currentUser.name,
                                             "username" to currentUser.username,
                                             "avatarBase64" to currentUser.avatarBase64,
-                                            "content" to "¡He compuesto una melodía retro con MusicDJ (con guitarra incluida)! 🎸🎶🎵",
+                                            "content" to "¡He compuesto una melodía extendida de 16 pasos con MusicDJ! 🎸🎹🎶",
                                             "mediaType" to "musicdj",
                                             "mediaBase64" to serializedMelody,
                                             "likesList" to emptyList<String>(),
@@ -955,7 +994,7 @@ fun MiaubertoMainScreen(
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(8.dp)
                             ) {
-                                Text("Compartir en Muro 🚀", fontSize = 12.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                                Text("Compartir en Muro 🚀", fontSize = 11.sp, color = Color.Black, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -1986,7 +2025,7 @@ fun PostItemCard(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = "🎵 Melodía MusicDJ",
+                                    text = "🎵 Melodía MusicDJ (16 Pasos)",
                                     color = MiaubertoTextPrimary,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold
@@ -1995,26 +2034,26 @@ fun PostItemCard(
                                 Button(
                                     onClick = {
                                         val dataStr = post.mediaBase64 ?: ""
-                                        if (dataStr.length >= 40) {
+                                        if (dataStr.length >= 80) {
                                             coroutineScope.launch(Dispatchers.Default) {
                                                 val baseFreqs = listOf(
-                                                    listOf(120.0, 150.0, 180.0),
-                                                    listOf(220.0, 261.6, 329.6),
-                                                    listOf(330.0, 392.0, 493.9),
-                                                    listOf(440.0, 523.2, 659.2),
-                                                    listOf(880.0, 1046.5, 1318.5)
+                                                    listOf(110.0, 146.8, 196.0),
+                                                    listOf(130.8, 164.8, 220.0),
+                                                    listOf(196.0, 246.9, 329.6),
+                                                    listOf(261.6, 329.6, 440.0),
+                                                    listOf(523.2, 659.2, 880.0)
                                                 )
-                                                for (step in 0..7) {
+                                                for (step in 0..15) {
                                                     for (track in 0..4) {
-                                                        val idx = track * 8 + step
+                                                        val idx = track * 16 + step
                                                         if (idx < dataStr.length) {
                                                             val note = dataStr[idx].toString().toIntOrNull() ?: 0
                                                             if (note > 0) {
-                                                                playTone(baseFreqs[track][note - 1], 180)
+                                                                playInstrumentTone(baseFreqs[track][note - 1], track, 180)
                                                             }
                                                         }
                                                     }
-                                                    delay(250L)
+                                                    delay(180L)
                                                 }
                                             }
                                         }
@@ -2117,6 +2156,7 @@ fun PostItemCard(
                     }
                 }
 
+    
                 Surface(
                     color = MiaubertoDarkBtn,
                     shape = RoundedCornerShape(8.dp),
