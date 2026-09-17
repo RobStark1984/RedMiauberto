@@ -1102,6 +1102,14 @@ fun MiaubertoMainScreen(
                         ) {
                             Text("💬 Chat IA", fontSize = 10.sp, color = if (arcadeSubTab == 3) Color.White else MiaubertoTextSecondary, fontWeight = FontWeight.Bold)
                         }
+                        Button(
+                            onClick = { arcadeSubTab = 4 },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (arcadeSubTab == 4) MiaubertoRed else Color.Transparent),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp)
+                            ) {
+                            Text("🐾 Mascota", fontSize = 10.sp, color = if (arcadeSubTab == 4) Color.White else MiaubertoTextSecondary, fontWeight = FontWeight.Bold)
+                                }
                     }
 
                     if (arcadeSubTab == 0) {
