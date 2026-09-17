@@ -750,7 +750,7 @@ fun MiaubertoMainScreen(
         listOf(
             "¡De calladito te vez mas bonito! 😼",
             "¡Cuidado con lo que publicas, te estoy observando 🐾!",
-            "¡Bienvenido a mi guarida, humano malvado!",
+            "¡Bienvenido al gremio, humano malvado!",
             "¡Haz girar la ruleta del casino si te atreves! 🎰",
             "¡Háblame en el chat de La Guarida si estás aburrido! 💬"
         )
@@ -1651,9 +1651,10 @@ fun MiaubertoMainScreen(
                                                 isMiaubertoTyping = true
                                                 coroutineScope.launch(Dispatchers.IO) {
                                                     try {
+                                                        // Inicializamos el modelo de Gemini con tu clave directa
                                                         val generativeModel = GenerativeModel(
                                                             modelName = "gemini-1.5-flash",
-                                                            apiKey = BuildConfig.GEMINI_API_KEY,
+                                                            apiKey = "AQUÍ_VA_TU_CLAVE_DE_GEMINI",
                                                             systemInstruction = content {
                                                                 text("""
                                                                     Eres Miauberto, un gato negro sarcástico, inteligente y líder supremo de un gremio felino malvado en una red social.
