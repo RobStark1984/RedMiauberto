@@ -755,7 +755,7 @@ fun MiaubertoMainScreen(
             "¡Háblame en el chat de La Guarida si estás aburrido! 💬"
         )
     }
-    var currentFloatingMessage by remember { mutableStateOf("¡De calladito te vez mas bonito! 😼") }
+    var currentFloatingMessage by remember { mutableStateOf("¡Calladito te vez mas bonito! 😼") }
 
     val db = remember { FirebaseFirestore.getInstance() }
     val auth = remember { FirebaseAuth.getInstance() }
@@ -1654,7 +1654,7 @@ fun MiaubertoMainScreen(
                                                         // Inicializamos el modelo de Gemini con tu clave directa
                                                         val generativeModel = GenerativeModel(
                                                             modelName = "gemini-1.5-flash",
-                                                            apiKey = "AQUÍ_VA_TU_CLAVE_DE_GEMINI",
+                                                            apiKey = "AQ.Ab8RN6It5OGNiRHfb-ReQHvOjVQfPqNRitRRojYuHTR5AJwHVA",
                                                             systemInstruction = content {
                                                                 text("""
                                                                     Eres Miauberto, un gato negro sarcástico, inteligente y líder supremo de un gremio felino malvado en una red social.
