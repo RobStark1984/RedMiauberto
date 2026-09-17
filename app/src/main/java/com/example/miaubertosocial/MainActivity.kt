@@ -57,6 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
@@ -731,9 +732,9 @@ fun MiaubertoMainScreen(
     onProfileUpdated: (UserProfile) -> Unit,
     onLogout: () -> Unit
 ) {
-    var selectedTab by remember { mutableStateOf(0) } // 0: Muro, 1: Perfil, 2: La Guarida
+    var selectedTab by remember { mutableStateOf(0) }
     var viewedProfileUid by remember { mutableStateOf<String?>(null) }
-    var arcadeSubTab by remember { mutableStateOf(0) } // 0: MusicDJ, 1: Casino, 2: Miniestudio
+    var arcadeSubTab by remember { mutableStateOf(0) }
 
     // ESTADO DEL MENSAJE FLOTANTE DE MIAUBERTO 😼💬
     var showMiaubertoFloatingBubble by remember { mutableStateOf(true) }
@@ -2017,7 +2018,6 @@ fun MiaubertoMainScreen(
                         .widthIn(max = 270.dp)
                         .border(1.5.dp, MiaubertoGold, RoundedCornerShape(16.dp))
                         .clickable {
-                            // Al hacer clic cambia de frase aleatoriamente
                             currentFloatingMessage = miaubertoPhrases.random()
                         }
                 ) {
@@ -2541,7 +2541,7 @@ fun MiaubertoMainScreen(
 
                             val updatedMap = hashMapOf<String, Any?>(
                                 "name" to editNameInput,
-                                "username" + editUsernameInput,
+                                "username" to editUsernameInput,
                                 "avatarBase64" to newAvatarBase64,
                                 "isPrivate" to editIsPrivate
                             )
