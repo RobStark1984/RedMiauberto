@@ -280,7 +280,7 @@ fun StatBar(label: String, progress: Float, color: Color) {
             Text("${(progress * 100).toInt()}%", color = MiaubertoTextSecondary, fontSize = 11.sp)
         }
         LinearProgressIndicator(
-            progress = { progress },
+            progress = progress, // <-- Aquí quitamos las llaves {}
             modifier = Modifier
                 .fillMaxWidth()
                 .height(6.dp)
